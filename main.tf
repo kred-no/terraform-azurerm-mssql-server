@@ -8,13 +8,8 @@ data "azurerm_resource_group" "MAIN" {
   name = var.resource_group.name
 }
 
-data "azurerm_virtual_network" "MAIN" {
-  name                = var.virtual_network.name
-  resource_group_name = var.virtual_network.resource_group_name
-}
-
 ////////////////////////
-// Helpers
+// Randomizer
 ////////////////////////
 
 resource "random_id" "X" {
@@ -26,7 +21,7 @@ resource "random_id" "X" {
 ////////////////////////
 
 resource "azurerm_key_vault" "MAIN" {
-  name                        = join("", ["kv", random_id.X.hex])
+  name                        = join("", [var.prefix, random_id.X.hex])
   sku_name                    = var.key_vault_sku_name
   soft_delete_retention_days  = 7
   enabled_for_disk_encryption = true
@@ -51,9 +46,9 @@ resource "azurerm_key_vault" "MAIN" {
 ////////////////////////
 
 resource "azurerm_storage_account" "MAIN" {
-  name                     = join("", ["sa", random_id.X.hex])
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
+  name                     = join("", [var.prefix, random_id.X.hex])
+  account_tier             = var.storage_account_tier
+  account_replication_type = var.storage_account_replication_type
 
   resource_group_name = data.azurerm_resource_group.MAIN.name
   location            = data.azurerm_resource_group.MAIN.location
@@ -69,7 +64,7 @@ resource "random_password" "SQLSERVER" {
 }
 
 resource "azurerm_key_vault_secret" "SQLSERVER" {
-  name         = join("-", ["admin-password", var.mssql_server_name])
+  name         = join("-", [var.mssql_server_name,"AdminPassword"])
   value        = random_password.SQLSERVER.result
   key_vault_id = azurerm_key_vault.MAIN.id
 }
@@ -77,6 +72,7 @@ resource "azurerm_key_vault_secret" "SQLSERVER" {
 resource "azurerm_mssql_server" "MAIN" {
   name                         = var.mssql_server_name
   version                      = var.mssql_server_version
+  minimum_tls_version          = var.mssql_server_minimum_tls_version
   administrator_login          = var.mssql_server_administrator_username
   administrator_login_password = azurerm_key_vault_secret.SQLSERVER.value
 
@@ -92,27 +88,38 @@ resource "azurerm_mssql_server" "MAIN" {
 // SQL Server Auditing
 ////////////////////////
 
-/*
 resource "azurerm_storage_container" "AUDIT" {
-  name                  = "mssql-vulnerability-assessment"
-  storage_account_name  = azurerm_storage_account.MAIN.0.name
+  name                  = join("-", [azurerm_mssql_server.MAIN.name, "audit"])
   container_access_type = "private"
+  storage_account_name  = azurerm_storage_account.MAIN.name
 }
 
+
 resource "azurerm_mssql_server_extended_auditing_policy" "MAIN" {
-  server_id                               = azurerm_sql_server.MAIN.id
-  storage_endpoint                        = azurerm_storage_account.MAIN.0.primary_blob_endpoint
-  storage_account_access_key              = azurerm_storage_account.MAIN.0.primary_access_key
-  storage_account_access_key_is_secondary = false
-  retention_in_days                       = 90
+  server_id                               = azurerm_mssql_server.MAIN.id
   log_monitoring_enabled                  = false
-}*/
+  storage_account_access_key_is_secondary = false
+  retention_in_days                       = var.auditing_retention_in_days
+  storage_endpoint                        = azurerm_storage_container.AUDIT.id
+  storage_account_access_key              = azurerm_storage_account.MAIN.primary_access_key
+
+}
 
 ////////////////////////
 // SQL Server Firewall Rules
 ////////////////////////
-// TODO
 
+resource "azurerm_mssql_firewall_rule" "MAIN" {
+  for_each = {
+    for rule in var.firewall_rules: rule.name => rule
+  }
+  
+  name             = each.value["name"]
+  start_ip_address = each.value["start_ip_address"]
+  end_ip_address   = each.value["namend_ip_address"]
+  
+  server_id        = azurerm_mssql_server.MAIN.id
+}
 
 ////////////////////////
 // SQL Databases
@@ -150,22 +157,3 @@ resource "azurerm_mssql_database" "MAIN" {
 
   server_id = azurerm_mssql_server.MAIN.id
 }
-
-////////////////////////
-// Private Endpoints
-////////////////////////
-
-/*
-resource "azurerm_private_endpoint" "MAIN" {
-  name                = "sqldb-private-endpoint"
-  location            = data.azurerm_virtual_network.MAIN.location
-  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
-  subnet_id           = ""
-
-  private_service_connection {
-    name                           = "sqldbprivatelink-x"
-    is_manual_connection           = false
-    private_connection_resource_id = azurerm_mssql_server.MAIN.id
-    subresource_names              = ["sqlServer"]
-  }
-}*/

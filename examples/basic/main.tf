@@ -3,8 +3,9 @@
 //////////////////////////////////
 
 locals {
-  rg_prefix          = "mssql-server"
-  rg_location        = "northeurope"
+  rg_prefix   = "mssql-server"
+  rg_location = "northeurope"
+
   vnet_name          = "example-mssql-virtual-network"
   vnet_address_space = ["192.168.168.0/24"]
 }
@@ -42,9 +43,12 @@ module "BASIC_MSSQL_SERVER" {
   source = "../../../terraform-azurerm-mssql-server"
   
   // Module Overrides
-  // N/A
+  // None
 
   // External Resource References
   resource_group  = azurerm_resource_group.MAIN
-  virtual_network = azurerm_virtual_network.MAIN
+}
+
+output "INFO" {
+  value = "todo"
 }
