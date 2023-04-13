@@ -96,6 +96,8 @@ resource "azurerm_storage_container" "AUDIT" {
 
 
 resource "azurerm_mssql_server_extended_auditing_policy" "MAIN" {
+  count = 0
+  
   server_id                               = azurerm_mssql_server.MAIN.id
   log_monitoring_enabled                  = false
   storage_account_access_key_is_secondary = false
