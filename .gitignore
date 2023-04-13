@@ -2,6 +2,7 @@
 
 *.tfstate
 *.tfstate.*
+*.lock.hcl
 
 *.auto.tfvars
 

@@ -50,5 +50,7 @@ module "BASIC_MSSQL_SERVER" {
 }
 
 output "INFO" {
-  value = "todo"
+  sensitive = false
+  
+  value = module.BASIC_MSSQL_SERVER.server.fully_qualified_domain_name
 }
