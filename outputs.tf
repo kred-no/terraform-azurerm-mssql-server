@@ -1,11 +1,9 @@
 output "server" {
-  sensitive = false
-  
-  value = azurerm_mssql_server.MAIN
+  sensitive = true
+  value     = azurerm_mssql_server.MAIN
 }
 
 output "key_vault" {
-  sensitive = false
-  
-  value = azurerm_key_vault.MAIN
+  sensitive = true
+  value     = azurerm_key_vault.MAIN
 }
