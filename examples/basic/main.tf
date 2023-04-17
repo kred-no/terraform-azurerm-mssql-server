@@ -1,14 +1,15 @@
 //////////////////////////////////
-// Customization
+// Config
 //////////////////////////////////
 
 locals {
-  rg_prefix   = "mssql-server"
+  rg_prefix   = "tf-basic-sqlsrv"
   rg_location = "northeurope"
-
-  vnet_name          = "example-mssql-virtual-network"
-  vnet_address_space = ["192.168.168.0/24"]
 }
+
+//////////////////////////////////
+// Resources
+//////////////////////////////////
 
 resource "random_id" "X" {
   keepers = {
@@ -18,21 +19,9 @@ resource "random_id" "X" {
   byte_length = 3
 }
 
-//////////////////////////////////
-// Required Resources
-//////////////////////////////////
-
 resource "azurerm_resource_group" "MAIN" {
   name     = join("-", [random_id.X.keepers.prefix, random_id.X.hex])
   location = local.rg_location
-}
-
-resource "azurerm_virtual_network" "MAIN" {
-  name          = local.vnet_name
-  address_space = local.vnet_address_space
-  
-  resource_group_name = azurerm_resource_group.MAIN.name
-  location            = azurerm_resource_group.MAIN.location
 }
 
 //////////////////////////////////
@@ -41,16 +30,32 @@ resource "azurerm_virtual_network" "MAIN" {
 
 module "BASIC_MSSQL_SERVER" {
   source = "../../../terraform-azurerm-mssql-server"
-  
-  // Module Overrides
-  // None
 
-  // External Resource References
-  resource_group  = azurerm_resource_group.MAIN
+  // Module Config
+  server_name = join("-", ["sqlsrv", random_id.X.hex])
+
+  databases = [{
+    name                        = "ExampleDb1"
+    auto_pause_delay_in_minutes = 60
+  }, {
+    name                        = "ExampleDb2"
+    auto_pause_delay_in_minutes = 60
+  }]
+
+  // Resource References
+  resource_group = azurerm_resource_group.MAIN
 }
 
-output "INFO" {
-  sensitive = false
-  
-  value = module.BASIC_MSSQL_SERVER.server.fully_qualified_domain_name
+//////////////////////////////////
+// Module | Outputs
+//////////////////////////////////
+
+output "server_fqdn" {
+  sensitive = true
+  value     = module.BASIC_MSSQL_SERVER.server.fully_qualified_domain_name
+}
+
+output "databases" {
+  sensitive = true
+  value     = module.BASIC_MSSQL_SERVER.databases
 }

@@ -21,6 +21,7 @@ git branch --show-current
 # Squas & merge to master
 # TODO
 ```
+
 ## References
 
 * https://github.com/kumarvna/terraform-azurerm-mssql-db/blob/master/main.tf
