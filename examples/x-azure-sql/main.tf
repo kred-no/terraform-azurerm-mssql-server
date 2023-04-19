@@ -3,8 +3,15 @@
 //////////////////////////////////
 
 locals {
-  rg_prefix   = "tf-basic-sqlsrv"
+  rg_prefix   = "tf-sqlsrv"
   rg_location = "northeurope"
+
+  databases = [{
+    name     = "elastic-db1"
+    sku_name = "ElasticPool"
+    #license_type                = "LicenseIncluded"
+    auto_pause_delay_in_minutes = 60
+  }]
 }
 
 //////////////////////////////////
@@ -28,23 +35,19 @@ resource "azurerm_resource_group" "MAIN" {
 // Module
 //////////////////////////////////
 
-module "BASIC_MSSQL_SERVER" {
+/*module "BASIC_MSSQL_SERVER" {
   source = "../../../terraform-azurerm-mssql-server"
 
   // Module Config
-  server_name = join("-", ["sqlsrv", random_id.X.hex])
+  server_name          = join("-", ["sqlsrv", random_id.X.hex])
+  elastic_pool_enabled = true
+  databases            = local.databases
 
-  databases = [{
-    name                        = "ExampleDb1"
-    auto_pause_delay_in_minutes = 60
-  }, {
-    name                        = "ExampleDb2"
-    auto_pause_delay_in_minutes = 60
-  }]
+  firewall_rules = var.firewall_rules
 
   // Resource References
   resource_group = azurerm_resource_group.MAIN
-}
+}*/
 
 //////////////////////////////////
 // Module | Outputs

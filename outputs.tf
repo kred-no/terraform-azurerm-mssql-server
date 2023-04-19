@@ -1,15 +1,19 @@
-output "server" {
-  sensitive = true
-  value     = azurerm_mssql_server.MAIN
-}
-
-output "key_vault" {
+/*output "key_vault" {
   sensitive = true
   value     = azurerm_key_vault.MAIN
 }
+*/
 
-output "databases" {
-  sensitive = true
-  
-  value = [ for db in azurerm_mssql_database.MAIN : db ]
+output "subnet" {
+  sensitive = false
+  value     = one(module.SQL_VIRTUAL_MACHINE[*].subnet)
+}
+
+output "server" {
+  value = try(
+    one(module.SQL_VIRTUAL_MACHINE[*].server),
+    #one(module.AZURE_SQL[*].server),
+    #one(module.AZURE_SQL_MANAGED[*].server),
+    "",
+  )
 }
