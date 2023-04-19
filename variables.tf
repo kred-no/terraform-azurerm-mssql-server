@@ -320,51 +320,24 @@ variable "sql_storage_configuration" {
     system_db_on_data_disk_enabled = optional(bool, false)
     use_managed_datadisk           = optional(bool, true)
     use_managed_logdisk            = optional(bool, true)
+    managed_datadisk_size_gb       = optional(number, 300)
+    managed_logdisk_size_gb        = optional(number, 300)
   })
 
   default = {}
 }
 
-////////////////////////
-// Key Vault
-////////////////////////
-
-/*variable "prefix" {
-  type    = string
-  default = "sql"
+variable "sql_public_access_enabled" {
+  type    = bool
+  default = false
 }
 
-variable "key_vault_sku_name" {
+variable "sql_update_username" {
   type    = string
-  default = "standard"
-
-  validation {
-    condition     = contains(["standard", "premium"], var.key_vault_sku_name)
-    error_message = "Valid values: standard, premium"
-  }
+  default = "Laban"
 }
 
-////////////////////////
-// Storage Account
-////////////////////////
-
-variable "storage_account_tier" {
+variable "sql_update_password" {
   type    = string
-  default = "Standard"
-
-  validation {
-    condition     = contains(["Standard", "Premium"], var.storage_account_tier)
-    error_message = "Invalid value provided."
-  }
+  default = "S31gem@nn"
 }
-
-variable "storage_account_replication_type" {
-  type    = string
-  default = "LRS"
-
-  validation {
-    condition     = contains(["LRS", "GRS", "RAGRS", "ZRS", "GZRS", "RAGZRS"], var.storage_account_replication_type)
-    error_message = "Invalid value provided."
-  }
-}
-*/

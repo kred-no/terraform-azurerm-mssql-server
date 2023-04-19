@@ -39,6 +39,9 @@ module "SQL_VIRTUAL_MACHINE" {
   sql_key_vault_credential  = var.sql_key_vault_credential
   sql_assessment            = var.sql_assessment
   sql_storage_configuration = var.sql_storage_configuration
+  sql_public_access_enabled = var.sql_public_access_enabled
+  sql_update_username       = var.sql_update_username
+  sql_update_password       = var.sql_update_password
 
   // References
   tags            = var.tags

@@ -9,6 +9,40 @@ Deploy SQL Server on Azure
 | PaaS     | Azure SQL Managed Instance | N/A              | rr-development |
 
 
+## Virtual Machine Extensions
+
+> https://learn.microsoft.com/en-us/cli/azure/vm/extension/image?view=azure-cli-latest
+
+```bash
+# List all extensions
+az vm extension image list --latest --location northeurope
+
+# List publishers
+az vm extension image list --query "[].publisher" -o tsv | sort -u
+
+# List Extensions by Publisher
+az vm extension image list-names --publisher Microsoft.SqlServer.Management --location northeurope --output table
+
+# List Extension versions
+az vm extension image list-versions -o table -l northeurope -p Microsoft.Azure.Extensions -n CustomScript
+```
+
+> https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/
+
+| Publisher                          | Name                     | Description |
+| :--                                | :--                      | :--         |
+| Microsoft.Azure.ActiveDirectory    | AADLoginForWindows       | Configure Windows VM for Azure AD based login.|
+| Microsoft.Azure.Extensions         | CustomScript             | Automatically launch and execute VM customization tasks post configuration. |
+| Microsoft.Azure.Extensions         | GuestActionForWindows    | N/A         |
+| Microsoft.Azure.OpenSSH            | WindowsOpenSSH           | Install and enable OpenSSH. |
+| Microsoft.Azure.RecoveryServices   | VMSnapshot               | https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/backup-azure-sql-server-running-azure-vm |
+| Microsoft.Compute                  | BGInfo                   | N/A         |
+| Microsoft.Compute                  | CustomScriptExtension    | https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/custom-script-windows |
+| Microsoft.Compute                  | JsonADDomainExtension    | N/A         |
+| Microsoft.Powershell               | DSC                      | https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/dsc-overview |
+| Microsoft.SoftwareUpdateManagement | WindowsOsUpdateExtension | N/A         |
+| Microsoft.SqlServer.Management     | SqlIaaSAgent             | N/A         |
+
 ## Help
 
 ```bash

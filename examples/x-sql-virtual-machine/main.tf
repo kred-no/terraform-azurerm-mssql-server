@@ -1,17 +1,29 @@
 ////////////////////////
-// Config
+// Test Config
 ////////////////////////
 
 locals {
-  rg_prefix   = "tf-sqlsrv"
-  rg_location = "northeurope"
-
+  rg_prefix          = "tf-sqlsrv"
+  rg_location        = "northeurope"
   vnet_name          = "sql-example-vnet"
   vnet_address_space = ["192.168.168.0/24"]
-  
-  connectivity_type = "PRIVATE"
 
-  bastion_enabled = true
+  create_test_database = false
+  bastion_enabled      = false
+
+  // SQL Module
+  deployment_type           = "virtual-machine"
+  sql_connectivity_type     = "PRIVATE"
+  sql_public_access_enabled = false
+}
+
+////////////////////////
+// Outputs
+////////////////////////
+
+output "sql_server_id" {
+  sensitive = true
+  value     = module.SQL_SERVER.server.id
 }
 
 ////////////////////////
@@ -51,28 +63,32 @@ module "SQL_SERVER" {
   ]
 
   // Module Config
-  deployment_type       = "virtual-machine"
-  sql_connectivity_type = local.connectivity_type
+  deployment_type = local.deployment_type
 
-  #server_priority        = "Spot"
-  #server_eviction_policy = "Delete"
+  sql_connectivity_type     = local.sql_connectivity_type
+  sql_public_access_enabled = local.sql_public_access_enabled
 
-  subnet_newbits = 2
-  subnet_netnum  = 0
+  subnet_vnet_index = 0
+  subnet_newbits    = 2
+  subnet_netnum     = 0
 
   // Resource References
   resource_group  = azurerm_resource_group.MAIN
   virtual_network = azurerm_virtual_network.MAIN
 }
 
+////////////////////////
+// Database
+////////////////////////
+
 resource "azurerm_mssql_database" "DEMO" {
-  count = 0
-  
-  name           = "demo-db"
-  collation      = "SQL_Latin1_General_CP1_CI_AS"
-  max_size_gb    = 4
-  sku_name       = "S0"
-  server_id      = module.SQL_SERVER.server.id
+  count = local.create_test_database ? 1 : 0
+
+  name        = "TestDatabase"
+  collation   = "SQL_Latin1_General_CP1_CI_AS"
+  max_size_gb = 4
+  sku_name    = "S0"
+  server_id   = module.SQL_SERVER.server.id
 }
 
 ////////////////////////
@@ -121,9 +137,4 @@ resource "azurerm_bastion_host" "MAIN" {
 
   location            = azurerm_virtual_network.MAIN.location
   resource_group_name = azurerm_virtual_network.MAIN.resource_group_name
-}
-
-output "bastion_host" {
-  sensitive = false
-  value     = one(azurerm_bastion_host.MAIN[*].dns_name)
 }

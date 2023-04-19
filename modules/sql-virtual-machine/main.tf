@@ -12,7 +12,7 @@ data "azurerm_virtual_network" "MAIN" {
 }
 
 ////////////////////////
-// Resources | Network
+// Subnet
 ////////////////////////
 
 resource "azurerm_subnet" "MAIN" {
@@ -28,6 +28,10 @@ resource "azurerm_subnet" "MAIN" {
   resource_group_name  = data.azurerm_virtual_network.MAIN.resource_group_name
 }
 
+////////////////////////
+// Network Interface
+////////////////////////
+
 resource "azurerm_network_interface" "MAIN" {
   name = join("-", [var.server_name, "nic"])
 
@@ -35,7 +39,7 @@ resource "azurerm_network_interface" "MAIN" {
     name                          = join("-", [var.server_name, "ipcfg"])
     private_ip_address_allocation = "Dynamic"
     subnet_id                     = azurerm_subnet.MAIN.id
-    #public_ip_address_id          = var.server_public_access ? xxx : null
+    #public_ip_address_id          = one(azurerm_public_ip.MAIN[*].id)
   }
 
   tags                = var.tags
@@ -43,9 +47,11 @@ resource "azurerm_network_interface" "MAIN" {
   resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
 }
 
-resource "azurerm_application_security_group" "MAIN" {
-  count = var.subnet_nsg_enabled ? 1 : 0
+////////////////////////
+// Application Security Group (ASG)
+////////////////////////
 
+resource "azurerm_application_security_group" "MAIN" {
   name                = join("-", [var.server_name, "asg"])
   tags                = var.tags
   location            = data.azurerm_virtual_network.MAIN.location
@@ -53,11 +59,13 @@ resource "azurerm_application_security_group" "MAIN" {
 }
 
 resource "azurerm_network_interface_application_security_group_association" "MAIN" {
-  count = var.subnet_nsg_enabled ? 1 : 0
-
   network_interface_id          = azurerm_network_interface.MAIN.id
-  application_security_group_id = one(azurerm_application_security_group.MAIN[*].id)
+  application_security_group_id = azurerm_application_security_group.MAIN.id
 }
+
+////////////////////////
+// Network Security Group (NSG)
+////////////////////////
 
 resource "azurerm_network_security_group" "MAIN" {
   count = var.subnet_nsg_enabled ? 1 : 0
@@ -68,13 +76,18 @@ resource "azurerm_network_security_group" "MAIN" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "MAIN" {
-  count = var.subnet_nsg_enabled ? 1 : 0
+  #count = var.subnet_nsg_enabled ? 1 : 0
+  depends_on = [azurerm_network_security_group.MAIN]
 
   subnet_id                 = azurerm_subnet.MAIN.id
   network_security_group_id = one(azurerm_network_security_group.MAIN[*].id)
 }
 
-resource "azurerm_network_security_rule" "MAIN" {
+////////////////////////
+// NSG Rules | User Defined
+////////////////////////
+
+resource "azurerm_network_security_rule" "USER" {
   for_each = {
     for rule in var.subnet_nsg_rules : join("", [rule.direction, rule.priority]) => rule
     if var.subnet_nsg_enabled
@@ -93,7 +106,7 @@ resource "azurerm_network_security_rule" "MAIN" {
     anytrue([
       each.value["direction"] != "Outbound",
       each.value["source_address_prefix"] != null,
-    ]) ? [] : [one(azurerm_application_security_group.MAIN[*])]
+    ]) ? [] : [azurerm_application_security_group.MAIN.id]
   ])
 
   destination_port_range     = each.value["destination_port_range"]
@@ -103,8 +116,116 @@ resource "azurerm_network_security_rule" "MAIN" {
     anytrue([
       each.value["direction"] != "Inbound",
       each.value["destination_address_prefix"] != null,
-    ]) ? [] : [one(azurerm_application_security_group.MAIN[*])]
+    ]) ? [] : [azurerm_application_security_group.MAIN.id]
   ])
+
+  network_security_group_name = one(azurerm_network_security_group.MAIN[*].name)
+  resource_group_name         = data.azurerm_virtual_network.MAIN.resource_group_name
+}
+
+////////////////////////
+// Public SQL Access
+////////////////////////
+
+locals {
+  public_sql_access_sku = "Standard"
+}
+
+resource "azurerm_public_ip" "SQL_PUBLIC" {
+  count = var.sql_public_access_enabled ? 1 : 0
+
+  name                = join("-", [var.server_name, "pip"])
+  sku                 = local.public_sql_access_sku
+  allocation_method   = "Static"
+  domain_name_label   = var.server_name
+  tags                = var.tags
+  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
+  location            = data.azurerm_virtual_network.MAIN.location
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "azurerm_lb" "SQL_PUBLIC" {
+  count = var.sql_public_access_enabled ? 1 : 0
+
+  name = join("-", [var.server_name, "sql-public"])
+  sku  = local.public_sql_access_sku
+
+  frontend_ip_configuration {
+    name                 = join("-", [var.server_name, "feip"])
+    public_ip_address_id = one(azurerm_public_ip.SQL_PUBLIC[*].id)
+  }
+
+  tags                = var.tags
+  location            = data.azurerm_virtual_network.MAIN.location
+  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
+}
+
+resource "azurerm_lb_backend_address_pool" "SQL_PUBLIC" {
+  count = var.sql_public_access_enabled ? 1 : 0
+
+  name            = join("-", [var.server_name, "bepool"])
+  loadbalancer_id = one(azurerm_lb.SQL_PUBLIC[*].id)
+}
+
+resource "azurerm_network_interface_backend_address_pool_association" "SQL_PUBLIC" {
+  count = var.sql_public_access_enabled ? 1 : 0
+
+  backend_address_pool_id = one(azurerm_lb_backend_address_pool.SQL_PUBLIC[*].id)
+  network_interface_id    = azurerm_network_interface.MAIN.id
+  ip_configuration_name   = join("-", [var.server_name, "ipcfg"])
+}
+
+resource "azurerm_lb_probe" "SQL_PUBLIC" {
+  count = var.sql_public_access_enabled ? 1 : 0
+
+  name                = "tcp-1433-sql"
+  protocol            = "Tcp"
+  port                = 1433
+  interval_in_seconds = 30
+  number_of_probes    = 2
+  probe_threshold     = 2
+  loadbalancer_id     = one(azurerm_lb.SQL_PUBLIC[*].id)
+}
+
+resource "azurerm_lb_rule" "SQL_PUBLIC" {
+  count = var.sql_public_access_enabled ? 1 : 0
+
+  name                           = "sql-public"
+  protocol                       = "Tcp"
+  frontend_port                  = 1433
+  backend_port                   = 1433
+  frontend_ip_configuration_name = join("-", [var.server_name, "feip"])
+
+  backend_address_pool_ids = [
+    one(azurerm_lb_backend_address_pool.SQL_PUBLIC[*].id),
+  ]
+
+  probe_id        = one(azurerm_lb_probe.SQL_PUBLIC[*].id)
+  loadbalancer_id = one(azurerm_lb.SQL_PUBLIC[*].id)
+}
+
+resource "azurerm_network_security_rule" "SQL_PUBLIC" {
+  count = alltrue([
+    var.sql_public_access_enabled,
+    var.subnet_nsg_enabled,
+  ]) ? 1 : 0
+
+  name      = "AllowSqlPublicAccess"
+  priority  = 1000
+  direction = "Inbound"
+  access    = "Allow"
+  protocol  = "Tcp"
+
+  source_port_range      = "*"
+  source_address_prefix  = "*"
+  destination_port_range = "1433"
+
+  destination_application_security_group_ids = [
+    one(azurerm_application_security_group.MAIN[*].id),
+  ]
 
   network_security_group_name = one(azurerm_network_security_group.MAIN[*].name)
   resource_group_name         = data.azurerm_virtual_network.MAIN.resource_group_name
@@ -120,7 +241,7 @@ resource "azurerm_managed_disk" "DATADISK" {
   name                 = join("-", [var.server_name, "datadisk"])
   storage_account_type = "Standard_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 300
+  disk_size_gb         = var.sql_storage_configuration.managed_datadisk_size_gb
   tags                 = var.tags
   location             = data.azurerm_resource_group.MAIN.location
   resource_group_name  = data.azurerm_resource_group.MAIN.name
@@ -132,7 +253,7 @@ resource "azurerm_managed_disk" "LOGDISK" {
   name                 = join("-", [var.server_name, "logdisk"])
   storage_account_type = "Standard_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 300
+  disk_size_gb         = var.sql_storage_configuration.managed_logdisk_size_gb
   tags                 = var.tags
   location             = data.azurerm_resource_group.MAIN.location
   resource_group_name  = data.azurerm_resource_group.MAIN.name
@@ -215,6 +336,44 @@ resource "azurerm_virtual_machine_data_disk_attachment" "LOGDISK" {
 }
 
 ////////////////////////
+// Virtual Machine Extensions
+////////////////////////
+
+resource "azurerm_virtual_machine_extension" "MAIN" {
+  count = 0
+
+  name                      = join("", [var.server_name, "ex1"])
+  publisher                 = "Microsoft.Azure.Extensions"
+  type                      = "CustomScript"
+  type_handler_version      = "2.0"
+  automatic_upgrade_enabled = true
+
+  settings = <<-HEREDOC
+  {
+    "commandToExecute": "hostname && uptime"
+  }
+  HEREDOC
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+}
+
+resource "azurerm_virtual_machine_extension" "BGINFO" {
+  count = var.optional_extensions.bginfo_enabled ? 1 : 0
+
+  name      = "BGInfo"
+  publisher = "Microsoft.Compute"
+  type      = "BGInfo"
+
+  type_handler_version       = var.optional_extensions.bginfo_version
+  auto_upgrade_minor_version = true
+  automatic_upgrade_enabled  = false
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+}
+
+////////////////////////
 // SQL Server Instance
 ////////////////////////
 
@@ -224,8 +383,8 @@ resource "azurerm_mssql_virtual_machine" "MAIN" {
   r_services_enabled               = var.sql_r_services_enabled
   sql_connectivity_port            = var.sql_connectivity_port
   sql_connectivity_type            = var.sql_connectivity_type
-  sql_connectivity_update_username = "Laban"
-  sql_connectivity_update_password = "S2ig3m@nn"
+  sql_connectivity_update_username = var.sql_update_username
+  sql_connectivity_update_password = var.sql_update_password
 
   dynamic "sql_instance" {
     for_each = var.sql_instance[*]

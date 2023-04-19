@@ -1,4 +1,17 @@
 ////////////////////////
+// MODULE TESTING
+////////////////////////
+
+variable "optional_extensions" {
+  type = object({
+    bginfo_enabled = optional(bool, true)
+    bginfo_version = optional(string, "2.2")
+  })
+
+  default = {}
+}
+
+////////////////////////
 // External
 ////////////////////////
 
@@ -201,5 +214,19 @@ variable "sql_storage_configuration" {
     system_db_on_data_disk_enabled = bool
     use_managed_datadisk           = bool
     use_managed_logdisk            = bool
+    managed_datadisk_size_gb       = number
+    managed_logdisk_size_gb        = number
   })
+}
+
+variable "sql_public_access_enabled" {
+  type = bool
+}
+
+variable "sql_update_username" {
+  type = string
+}
+
+variable "sql_update_password" {
+  type = string
 }
