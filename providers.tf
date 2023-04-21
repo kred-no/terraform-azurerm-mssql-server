@@ -5,5 +5,9 @@ terraform {
     azurerm = {
       source = "hashicorp/azurerm"
     }
+
+    azuread = {
+      source = "hashicorp/azuread"
+    }
   }
 }

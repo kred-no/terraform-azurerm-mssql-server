@@ -10,13 +10,13 @@
 // Private Link Service
 ////////////////////////
 
-resource "azurerm_public_ip" "SQL_PRIVATE_LINK" {
+resource "azurerm_public_ip" "MAIN" {
   count = 1
 
-  name                = join("-", [var.server_name, "sql-plink"])
-  sku                 = var.sql_public_access_sku
+  name                = local.name
+  sku                 = var.sku
   allocation_method   = "Static"
-  domain_name_label   = join("", [var.server_name, "plink"])
+  domain_name_label   = var.domain_name_label
   tags                = var.tags
   resource_group_name = var.virtual_network.resource_group_name
   location            = var.virtual_network.location
@@ -26,15 +26,15 @@ resource "azurerm_public_ip" "SQL_PRIVATE_LINK" {
   }
 }
 
-resource "azurerm_lb" "SQL_PRIVATE_LINK" {
+resource "azurerm_lb" "MAIN" {
   count = 1
 
-  name = join("-", [var.server_name, "plink"])
-  sku  = var.sql_public_access_sku
+  name = local.name
+  sku  = var.sku
 
   frontend_ip_configuration {
-    name                 = join("-", [var.server_name, "feip"])
-    public_ip_address_id = one(azurerm_public_ip.SQL_PRIVATE_LINK[*].id)
+    name                 = "public"
+    public_ip_address_id = one(azurerm_public_ip.MAIN[*].id)
   }
 
   tags                = var.tags
@@ -42,56 +42,55 @@ resource "azurerm_lb" "SQL_PRIVATE_LINK" {
   resource_group_name = var.virtual_network.resource_group_name
 }
 
-resource "azurerm_lb_backend_address_pool" "SQL_PRIVATE_LINK" {
+resource "azurerm_lb_backend_address_pool" "MAIN" {
   count = 1
 
-  name            = join("-", [var.server_name, "bepool"])
-  loadbalancer_id = one(azurerm_lb.SQL_PRIVATE_LINK[*].id)
+  name            = local.name
+  loadbalancer_id = one(azurerm_lb.MAIN[*].id)
 }
 
-resource "azurerm_network_interface_backend_address_pool_association" "SQL_PRIVATE_LINK" {
+resource "azurerm_network_interface_backend_address_pool_association" "MAIN" {
   count = 1
 
-  backend_address_pool_id = one(azurerm_lb_backend_address_pool.SQL_PRIVATE_LINK[*].id)
-  network_interface_id    = azurerm_network_interface.MAIN.id
-  ip_configuration_name   = azurerm_network_interface.MAIN.ip_configuration.0.name
+  backend_address_pool_id = one(azurerm_lb_backend_address_pool.MAIN[*].id)
+  network_interface_id    = var.network_interface.id
+  ip_configuration_name   = var.network_interface.ip_configuration.0.name
 }
 
-resource "azurerm_lb_probe" "SQL_PRIVATE_LINK" {
+resource "azurerm_lb_probe" "MAIN" {
   count = 1
 
-  name                = format("tcp-%s-sql", var.sql_connectivity_port)
+  name                = "tcp-1433-sql"
   protocol            = "Tcp"
-  port                = var.sql_connectivity_port
+  port                = 1433
   interval_in_seconds = 30
   number_of_probes    = 2
   probe_threshold     = 1
-  loadbalancer_id     = one(azurerm_lb.SQL_PRIVATE_LINK[*].id)
+  loadbalancer_id     = one(azurerm_lb.MAIN[*].id)
 }
 
-resource "azurerm_lb_rule" "SQL_PRIVATE_LINK" {
+resource "azurerm_lb_rule" "MAIN" {
   count = 1
 
-  name                           = "sql-private-link"
+  name                           = local.name
   protocol                       = "Tcp"
   frontend_port                  = 1433
   backend_port                   = var.sql_connectivity_port
-  frontend_ip_configuration_name = join("-", [var.server_name, "feip"])
-  #disable_outbound_snat          = true
-  disable_outbound_snat = false
+  frontend_ip_configuration_name = one(azurerm_lb.MAIN[*].frontend_ip_configuration.0.name)
+  disable_outbound_snat          = local.disable_outbound_snat
 
   backend_address_pool_ids = [
-    one(azurerm_lb_backend_address_pool.SQL_PRIVATE_LINK[*].id),
+    one(azurerm_lb_backend_address_pool.MAIN[*].id),
   ]
 
-  probe_id        = one(azurerm_lb_probe.SQL_PRIVATE_LINK[*].id)
-  loadbalancer_id = one(azurerm_lb.SQL_PRIVATE_LINK[*].id)
+  probe_id        = one(azurerm_lb_probe.MAIN[*].id)
+  loadbalancer_id = one(azurerm_lb.MAIN[*].id)
 }
 
-resource "azurerm_network_security_rule" "SQL_PRIVATE_LINK" {
+resource "azurerm_network_security_rule" "MAIN" {
   count = 1
 
-  name      = "AllowSqlPrivateLink"
+  name      = "AllowSqlPrivateLinkService"
   priority  = 999
   direction = "Inbound"
   access    = "Allow"
@@ -102,34 +101,34 @@ resource "azurerm_network_security_rule" "SQL_PRIVATE_LINK" {
   destination_port_range = "1433"
 
   destination_application_security_group_ids = [
-    one(azurerm_application_security_group.MAIN[*].id),
+    var.application_security_group.id
   ]
 
-  network_security_group_name = one(azurerm_network_security_group.MAIN[*].name)
+  network_security_group_name = var.network_security_group.name
   resource_group_name         = var.virtual_network.resource_group_name
 }
 
-resource "azurerm_private_link_service" "SQL_PRIVATE_LINK" {
+resource "azurerm_private_link_service" "MAIN" {
   count = 1
 
-  name = join("-", [var.server_name, "service"])
+  name = local.name
 
   nat_ip_configuration {
     primary   = true
     name      = "primary"
-    subnet_id = azurerm_subnet.MAIN.id
+    subnet_id = var.subnet.id
   }
 
   nat_ip_configuration {
     primary   = false
     name      = "secondary"
-    subnet_id = azurerm_subnet.MAIN.id
+    subnet_id = var.subnet.id
   }
 
   load_balancer_frontend_ip_configuration_ids = [
-    one(azurerm_lb.SQL_PRIVATE_LINK[*].frontend_ip_configuration.0.id),
+    one(azurerm_lb.MAIN[*].frontend_ip_configuration.0.id),
   ]
 
-  location            = var.resource_group.location
-  resource_group_name = var.resource_group.name
+  location            = var.virtual_network.location
+  resource_group_name = var.virtual_network.resource_group_name
 }

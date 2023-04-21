@@ -1,77 +1,20 @@
 ////////////////////////
-// Flags
-////////////////////////
-
-locals {
-  flags = {
-    testing_enabled = false
-  }
-}
-
-////////////////////////
 // Sources
 ////////////////////////
 
 data "azurerm_client_config" "CURRENT" {}
 
-data "azurerm_resource_group" "MAIN" {
-  count = anytrue([
-    var.deployment_type == "virtual-machine",
-  ]) ? 1 : 0
+data "azuread_service_principal" "AZURE_KEY_VAULT" {
+  display_name = "Azure Key Vault"
+}
 
+data "azurerm_resource_group" "MAIN" {
   name = var.resource_group.name
 }
 
 data "azurerm_virtual_network" "MAIN" {
-  count = anytrue([
-    var.deployment_type == "virtual-machine",
-  ]) ? 1 : 0
-
   name                = var.virtual_network.name
   resource_group_name = var.virtual_network.resource_group_name
-}
-
-////////////////////////
-// Azure Key Vault
-////////////////////////
-
-// Globally Unique
-// Must be between 3 and 24 characters in length
-// May only contain 0-9, a-z, A-Z, and not consecutive -.
-
-resource "random_string" "KEY_VAULT" {
-  length  = 22 // prefixed with 'kv'
-  special = false
-
-  keepers = {
-    prefix              = "kv"
-    resource_group_name = one(data.azurerm_resource_group.MAIN[*].name)
-  }
-}
-
-resource "azurerm_key_vault" "MAIN" {
-  count = 1
-
-  name                        = join("-", [random_string.KEY_VAULT.keepers.prefix, random_string.KEY_VAULT.result])
-  sku_name                    = "standard"
-  enabled_for_disk_encryption = true
-  soft_delete_retention_days  = 7
-  purge_protection_enabled    = false
-
-  tenant_id           = data.azurerm_client_config.CURRENT.tenant_id
-  location            = one(data.azurerm_resource_group.MAIN[*].location)
-  resource_group_name = one(data.azurerm_resource_group.MAIN[*].name)
-}
-
-resource "azurerm_key_vault_access_policy" "CLIENT" {
-  count = 0
-
-  key_vault_id = one(azurerm_key_vault.MAIN[*].id)
-  tenant_id    = data.azurerm_client_config.CURRENT.tenant_id
-  object_id    = data.azurerm_client_config.CURRENT.object_id
-
-  key_permissions    = ["Get"]
-  secret_permissions = ["Get"]
 }
 
 ////////////////////////
@@ -89,29 +32,79 @@ resource "random_string" "STORAGE_ACCOUNT" {
 
   keepers = {
     prefix              = "sacc"
-    resource_group_name = one(data.azurerm_resource_group.MAIN[*].name)
+    prefix_kvmanaged    = "kvsa"
+    resource_group_name = data.azurerm_resource_group.MAIN.name
   }
 }
 
 resource "azurerm_storage_account" "MAIN" {
-  count = 1
-
   name                     = join("", [random_string.STORAGE_ACCOUNT.keepers.prefix, random_string.STORAGE_ACCOUNT.result])
   account_tier             = "Standard"
   account_replication_type = "LRS"
   tags                     = var.tags
-  resource_group_name      = one(data.azurerm_resource_group.MAIN[*].name)
-  location                 = one(data.azurerm_resource_group.MAIN[*].location)
+  resource_group_name      = data.azurerm_resource_group.MAIN.name
+  location                 = data.azurerm_resource_group.MAIN.location
 }
 
-resource "azurerm_storage_container" "SQL_DATABASE_BACKUPS" {
-  count = alltrue([
-    local.flags.testing_enabled,
-  ]) ? 1 : 0
+////////////////////////
+// Azure Key Vault
+////////////////////////
 
-  name                  = "sql-database-backups"
-  container_access_type = "blob"
-  storage_account_name  = one(azurerm_storage_account.MAIN[*].name)
+// Globally Unique
+// Must be between 3 and 24 characters in length
+// May only contain 0-9, a-z, A-Z, and not consecutive -.
+
+resource "random_string" "KEY_VAULT" {
+  length  = 22 // prefixed with 'kv'
+  special = false
+
+  keepers = {
+    prefix              = "kv"
+    resource_group_name = data.azurerm_resource_group.MAIN.name
+  }
+}
+
+resource "azurerm_role_assignment" "MAIN" {
+  role_definition_name = "Storage Account Key Operator Service Role"
+  principal_id         = data.azuread_service_principal.AZURE_KEY_VAULT.id // Allows "Azure Key Vault service" to manage this Storage Account
+  scope                = azurerm_storage_account.MAIN.id
+}
+
+resource "azurerm_key_vault" "MAIN" {
+  depends_on = [azurerm_role_assignment.MAIN]
+
+  name                        = join("", [random_string.KEY_VAULT.keepers.prefix, random_string.KEY_VAULT.result])
+  sku_name                    = "standard"
+  enabled_for_disk_encryption = true
+  soft_delete_retention_days  = 7
+  purge_protection_enabled    = false
+
+  tenant_id           = data.azurerm_client_config.CURRENT.tenant_id
+  location            = data.azurerm_resource_group.MAIN.location
+  resource_group_name = data.azurerm_resource_group.MAIN.name
+}
+
+resource "azurerm_key_vault_access_policy" "CLIENT" {
+  key_vault_id = azurerm_key_vault.MAIN.id
+  
+  tenant_id    = data.azurerm_client_config.CURRENT.tenant_id
+  object_id    = data.azurerm_client_config.CURRENT.object_id
+
+  certificate_permissions = ["Create", "List", "Get", "Delete", "Purge"]
+  key_permissions         = ["Create", "List", "Get", "Delete", "Purge", "GetRotationPolicy", "SetRotationPolicy", "Rotate"]
+  secret_permissions      = ["List", "Get", "Set", "Delete", "Purge"]
+  storage_permissions     = ["Update", "List", "Get", "Set", "Delete", "Purge", "ListSAS", "GetSAS", "DeleteSAS"]
+}
+
+resource "azurerm_key_vault_managed_storage_account" "MAIN" {
+  depends_on = [azurerm_key_vault_access_policy.CLIENT]
+
+  name                         = join("", [random_string.STORAGE_ACCOUNT.keepers.prefix, random_string.STORAGE_ACCOUNT.result])
+  storage_account_key          = "key1"
+  regenerate_key_automatically = true
+  regeneration_period          = "P1D"
+  key_vault_id                 = azurerm_key_vault.MAIN.id
+  storage_account_id           = azurerm_storage_account.MAIN.id
 }
 
 ////////////////////////
@@ -119,26 +112,26 @@ resource "azurerm_storage_container" "SQL_DATABASE_BACKUPS" {
 ////////////////////////
 
 module "SQL_VIRTUAL_MACHINE" {
-  count  = var.deployment_type != "virtual-machine" ? 0 : 1
   source = "./modules/sql-virtual-machine"
+  count  = var.deployment_type != "virtual-machine" ? 0 : 1
 
-  subnet_name        = var.subnet_name
-  subnet_vnet_index  = var.subnet_vnet_index
-  subnet_newbits     = var.subnet_newbits
-  subnet_netnum      = var.subnet_netnum
-  subnet_nsg_enabled = var.subnet_nsg_enabled
-  subnet_nsg_rules   = var.subnet_nsg_rules
+  subnet    = var.subnet
+  nsg_rules = var.nsg_rules
 
-  server_name                   = var.server_name
-  server_size                   = var.server_size
-  server_priority               = var.server_priority
-  server_eviction_policy        = var.server_eviction_policy
-  server_max_bid_price          = var.server_max_bid_price
-  server_timezone               = var.server_timezone
-  server_source_image_reference = var.server_source_image_reference
-  server_os_disk                = var.server_os_disk
-  server_admin_username         = var.server_admin_username
-  server_admin_password         = var.server_admin_password
+  vm_name                      = var.vm_name
+  vm_size                      = var.vm_size
+  vm_priority                  = var.vm_priority
+  vm_eviction_policy           = var.vm_eviction_policy
+  vm_max_bid_price             = var.vm_max_bid_price
+  vm_timezone                  = var.vm_timezone
+  vm_source_image_reference    = var.vm_source_image_reference
+  vm_os_disk                   = var.vm_os_disk
+  vm_admin_username            = var.vm_admin_username
+  vm_admin_password            = var.vm_admin_password
+  vm_extension_aad_login       = var.vm_extension_aad_login
+  vm_extension_bginfo          = var.vm_extension_bginfo
+  vm_extension_compute_scripts = var.vm_extension_compute_scripts
+  vm_extension_azure_scripts   = var.vm_extension_azure_scripts
 
   sql_license_type          = var.sql_license_type
   sql_r_services_enabled    = var.sql_r_services_enabled
@@ -154,30 +147,40 @@ module "SQL_VIRTUAL_MACHINE" {
   sql_update_password       = var.sql_update_password
 
   // References
-  tags = var.tags
-
-  resource_group  = one(data.azurerm_resource_group.MAIN[*])
-  virtual_network = one(data.azurerm_virtual_network.MAIN[*])
+  tags            = var.tags
+  key_vault       = azurerm_key_vault.MAIN
+  storage_account = azurerm_storage_account.MAIN
+  resource_group  = data.azurerm_resource_group.MAIN
+  virtual_network = data.azurerm_virtual_network.MAIN
 }
 
-module "SQL_VIRTUAL_MACHINE_PUBLIC_ENDPOINT" {
-  source = "./modules/sql-public-endpoint"
+////////////////////////
+// Load Balancer
+////////////////////////
 
-  count = alltrue([
-    var.deployment_type == "virtual-machine",
-    var.sql_public_access_enabled,
+module "PUBLIC_LOAD_BALANCER" {
+  source = "./modules/public-load-balancer"
+
+  count = anytrue([
+    var.private_link_enabled,
+    length(var.nat_rules) > 0,
+    length(var.nat_pool_rules) > 0,
+    length(var.lb_rules) > 0,
   ]) ? 1 : 0
-  
-  // Config
-  sku = var.sql_public_access_sku
+
+  domain_name_label = var.vm_name
+  nat_rules         = var.nat_rules
+  nat_pool_rules    = var.nat_pool_rules
+  lb_rules          = var.lb_rules
 
   // References
-  tags                        = var.tags
-  domain_name_label          = one(module.SQL_VIRTUAL_MACHINE[*].sql_host.name)
-  network_interface          = one(module.SQL_VIRTUAL_MACHINE[*].network_interface)
-  application_security_group = one(module.SQL_VIRTUAL_MACHINE[*].application_security_group)
-  network_security_group     = one(module.SQL_VIRTUAL_MACHINE[*].network_security_group)
-  virtual_network            = one(data.azurerm_virtual_network.MAIN[*])
+  tags = var.tags
+  vnet = data.azurerm_virtual_network.MAIN
+
+  subnet = one(module.SQL_VIRTUAL_MACHINE[*].subnet)
+  nic    = one(module.SQL_VIRTUAL_MACHINE[*].network_interface)
+  asg    = one(module.SQL_VIRTUAL_MACHINE[*].application_security_group)
+  nsg    = one(module.SQL_VIRTUAL_MACHINE[*].network_security_group)
 }
 
 ////////////////////////
@@ -189,3 +192,4 @@ module "SQL_VIRTUAL_MACHINE_PUBLIC_ENDPOINT" {
 // Azure SQL Managed Instance
 ////////////////////////
 // N/A
+

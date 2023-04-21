@@ -1,26 +1,75 @@
+// Creates a virtual machine running Microsoft SQL Server
+//
+// Options:
+//   - Default: Access SQL Server & Rdp via NAT. Blocs
+//   - Option: Access SQL server host using Azure Bastion Host
+//   - Option: Create an Azure Private Link Service for the Load Balancer & access resources via Private Link.
+
 ////////////////////////
 // Test Config
 ////////////////////////
 
 locals {
+
   flag = {
-    bastion_enabled             = false
-    private_endpoint_enabled    = false
-    sql_public_endpoint_enabled = true
+    bastion_enabled          = false
+    private_link_enabled     = false
+    private_endpoint_enabled = false
   }
 
-  rg_prefix          = "tf-sqlsrv"
-  rg_location        = "northeurope"
+  // Test Resources
+  rg_prefix   = "tf-sqlsrv"
+  rg_location = "northeurope"
+
   vnet_name          = "sql-example-vnet"
   vnet_address_space = ["192.168.168.0/24"]
 
   private_endpoint_address_prefix = cidrsubnet("192.168.168.0/24", 2, 2)
-  bastion_sku                     = "Basic"
   bastion_address_prefix          = cidrsubnet("192.168.168.0/24", 2, 1)
+  bastion_sku                     = "Basic"
 
-  // SQL Module Overrides
-  deployment_type           = "virtual-machine"
-  sql_connectivity_type     = "PRIVATE"
+  // Module Config
+  deployment_type = "virtual-machine"
+
+  subnet = {
+    vnet_index = 0
+    newbits    = 2
+    netnum     = 0
+  }
+
+  lb_rules = []
+  
+  nat_pool_rules = []
+
+  nat_rules = [{
+    name          = "sql-1433-tcp"
+    frontend_port = 1433
+    backend_port  = 1433
+  }, {
+    name          = "rds-3389-tcp"
+    frontend_port = 3389
+    backend_port  = 3389
+  }]
+
+  nsg_rules = [{
+    name                   = "AllowSql"
+    priority               = 500
+    direction              = "Inbound"
+    access                 = "Allow"
+    protocol               = "Tcp"
+    source_port_range      = "*"
+    source_address_prefix  = "*"
+    destination_port_range = "1433"
+  }, {
+    name                   = "AllowRdp"
+    priority               = 499
+    direction              = "Inbound"
+    access                 = "Allow"
+    protocol               = "Tcp"
+    source_port_range      = "*"
+    source_address_prefix  = "*"
+    destination_port_range = "3389"
+  }]
 
   source_image = {
     offer     = "sql2022-ws2022"
@@ -76,16 +125,14 @@ module "SQL_SERVER" {
   ]
 
   // Module Config
-  deployment_type = local.deployment_type
-
-  server_source_image_reference = local.source_image
-
-  sql_connectivity_type     = local.sql_connectivity_type
-  sql_public_access_enabled = local.flag.sql_public_endpoint_enabled
-
-  subnet_vnet_index = 0
-  subnet_newbits    = 2
-  subnet_netnum     = 0
+  deployment_type           = local.deployment_type
+  subnet                    = local.subnet
+  vm_source_image_reference = local.source_image
+  nat_rules                 = local.nat_rules
+  nat_pool_rules            = local.nat_pool_rules
+  lb_rules                  = local.lb_rules
+  nsg_rules                 = local.nsg_rules
+  private_link_enabled      = local.flag.private_link_enabled
 
   // Resource References
   resource_group  = azurerm_resource_group.MAIN

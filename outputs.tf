@@ -13,22 +13,22 @@ output "sql_host" {
   value     = one(module.SQL_VIRTUAL_MACHINE[*].sql_host)
 }
 
-output "key_vault" {
-  sensitive = true
-  value     = one(azurerm_key_vault.MAIN[*])
-}
-
-output "storage_account" {
-  sensitive = true
-  value     = one(azurerm_storage_account.MAIN[*])
-}
-
 output "sql_public_endpoint" {
   sensitive = true
-  value     = one(module.SQL_VIRTUAL_MACHINE_PUBLIC_ENDPOINT[*].public_ip.fqdn)
+  value     = one(module.PUBLIC_LOAD_BALANCER[*].public_ip.fqdn)
 }
 
 /*output "private_link_service" {
   sensitive = false
   value     = one(module.SQL_VIRTUAL_MACHINE[*].private_link_service)
 }*/
+
+output "key_vault" {
+  sensitive = true
+  value     = azurerm_key_vault.MAIN
+}
+
+output "storage_account" {
+  sensitive = true
+  value     = azurerm_storage_account.MAIN
+}

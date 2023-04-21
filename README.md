@@ -2,11 +2,11 @@
 
 Deploy SQL Server on Azure
 
-| Category | Description                | Status           | Latest Ref     | 
-| :--      | :--                        | :--              | :--            |
-| PaaS     | SQL Server Virtual Machine | Work In Progress | rr-development |
-| IaaS     | Azure SQL                  | N/A              | rr-development |
-| PaaS     | Azure SQL Managed Instance | N/A              | rr-development |
+| Category | Description                  | Status         | Latest Ref     | 
+| :--      | :--                          | :--            | :--            |
+| IaaS     | SQL Server (Virtual Machine) | In Development | rr-development |
+| PaaS     | Azure SQL                    | N/A            | N/A            |
+| PaaS     | Azure SQL (Managed Instance) | N/A            | N/A            |
 
 
 ## Virtual Machine Extensions

@@ -21,8 +21,8 @@ provider "azurerm" {
 
     virtual_machine {
       delete_os_disk_on_deletion     = true
-      graceful_shutdown              = true // It's an SQL server ..
-      skip_shutdown_and_force_delete = false
+      graceful_shutdown              = false // It's an SQL server ..
+      skip_shutdown_and_force_delete = true // Avoids SQL server API bug ..
     }
   }
 

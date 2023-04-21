@@ -24,16 +24,16 @@ variable "deployment_type" {
 
 variable "resource_group" {
   description = <<-HEREDOC
-  Resource Group Name is globally unique, and must be 1-90 Characters.
-  Valid characters are members of the following categories (in UnicodeCategories):
-
+  Reference to an EXISTING resource group to use for creating resources.
+  The "Resource Group" name is globally unique, and must consist of 1-90 Characters.
+  
+  Valid character categories (UnicodeCategories):
     - UppercaseLetter
     - LowercaseLetter
     - TitlecaseLetter
     - ModifierLetter
     - OtherLetter
     - DecimalDigitNumber
-
   HEREDOC
 
   type = object({
@@ -43,7 +43,11 @@ variable "resource_group" {
 }
 
 variable "virtual_network" {
-  description = "N/A"
+  description = <<-HEREDOC
+  [virtual machine]
+    Reference to an EXISTING virtual network.
+    Any new network-related resources will be created in the same resource group as this virtual network.
+  HEREDOC
 
   type = object({
     name                = string
@@ -54,7 +58,7 @@ variable "virtual_network" {
 }
 
 variable "tags" {
-  description = "N/A"
+  description = "Tags added for ALL new resources."
 
   type    = map(string)
   default = {}
@@ -64,43 +68,35 @@ variable "tags" {
 // Subnet
 ////////////////////////
 
-variable "subnet_name" {
-  description = "Name of the new subnet."
+variable "subnet" {
+  description = <<-HEREDOC
+  [virtual machine]
+    Creates a new subnet. NSG can optionally be disabled.
+    The 'vnet_index', 'newbits' and 'netnum' defines a subnet prefix, using terraform the function 'cidrsubnet'.
+    
+    Examples, using the VNet ["192.168.168.0/24", "10.0.0.0/16"]
+      > [vnet_index = 0][newbits = 2][netnum = 0] : cidrsubnet("192.168.168.0/24", 2, 0) = "192.168.168.0/26"
+      > [vnet_index = 1][newbits = 8][netnum = 1] : cidrsubnet("10.0.0.0/24", 8, 1)      = "10.0.1.0/24"
+  HEREDOC
 
-  type    = string
-  default = "SqlVmSubnet"
+  type = object({
+    name        = optional(string, "SqlVirtualMachineSubnet")
+    nsg_enabled = optional(bool, true)
+    vnet_index  = optional(number, 0)
+    newbits     = optional(number, 2)
+    netnum      = optional(number, 0)
+  })
+
+  default = {}
 }
 
-variable "subnet_vnet_index" {
-  description = "The VNet index for generating the subnet address (using terraform function 'cidrsubnet')."
-
-  type    = number
-  default = 0
-}
-
-variable "subnet_newbits" {
-  description = "The number of new bits to add to the VNet for creating the subnet address (using terraform function 'cidrsubnet')."
-
-  type    = number
-  default = 2
-}
-
-variable "subnet_netnum" {
-  description = "The network number to select from the generated subnets (using terraform function 'cidrsubnet')."
-
-  type    = number
-  default = 0
-}
-
-variable "subnet_nsg_enabled" {
-  description = "Enable Network Security Group for the subnet."
-
-  type    = bool
-  default = true
-}
-
-variable "subnet_nsg_rules" {
-  description = "User defined NSG rules to add to the subnet. 'Inbound' destination and 'Outbound' source defaults to the application security group of the host server network interface, unless address is provided."
+variable "nsg_rules" {
+  description = <<-HEREDOC
+  [virtual machine]
+    User defined NSG rules to add to the subnet.
+    - 'Inbound' destination defaults to the application security group of the host server network interface, unless an address is provided.
+    - 'Outbound' source defaults to the application security group of the host server network interface, unless an address is provided.
+  HEREDOC
 
   type = list(object({
     name                       = string
@@ -118,45 +114,52 @@ variable "subnet_nsg_rules" {
 }
 
 ////////////////////////
-// SQL Host Configuration
+// Virtual Machine
 ////////////////////////
 
-variable "server_name" {
+variable "vm_name" {
   description = "N/A"
 
   type    = string
-  default = "mssql-srv"
+  default = "sqlsrv"
 }
 
-variable "server_size" {
-  description = "N/A"
+variable "vm_operating_system" {
+  description = "Only 'Windows' supported (for now)."
+
+  type    = string
+  default = "Windows"
+}
+
+variable "vm_size" {
+  description = "The VM size to use."
 
   type    = string
   default = "Standard_B2ms"
 }
 
-variable "server_priority" {
-  description = "N/A"
+variable "vm_priority" {
+  description = "The VM priority (i.e. 'Spot-or-Not')."
 
   type    = string
   default = "Regular"
 }
 
-variable "server_eviction_policy" {
-  description = "N/A"
+variable "vm_eviction_policy" {
+  description = "Deallocation, when using Spot instance."
 
   type    = string
   default = null
 }
 
-variable "server_max_bid_price" {
+variable "vm_max_bid_price" {
   description = "N/A"
 
   type    = number
-  default = -1
+  default = null
 }
 
-variable "server_source_image_reference" {
+variable "vm_source_image_reference" {
   description = "N/A"
 
   type = object({
@@ -173,37 +176,33 @@ variable "server_source_image_reference" {
   }
 }
 
-variable "server_admin_username" {
+variable "vm_admin_username" {
   description = "N/A"
 
   type    = string
-  default = "Magnum"
+  default = "Superman"
 }
 
-variable "server_admin_password" {
+variable "vm_admin_password" {
   description = "N/A"
 
   type    = string
-  default = "PewPew@5000"
+  default = "IAmCl@rkK3nt"
 }
 
-variable "server_os_disk" {
+variable "vm_os_disk" {
   description = "N/A"
 
   type = object({
-    caching              = string
-    storage_account_type = string
-    disk_size_gb         = number
+    caching              = optional(string, "ReadOnly")
+    storage_account_type = optional(string, "Standard_LRS")
+    disk_size_gb         = optional(number, 127)
   })
 
-  default = {
-    caching              = "ReadOnly"
-    storage_account_type = "Standard_LRS"
-    disk_size_gb         = 127
-  }
+  default = {}
 }
 
-variable "server_timezone" {
+variable "vm_timezone" {
   description = "See https://jackstromberg.com/2017/01/list-of-time-zones-consumed-by-azure/"
 
   type    = string
@@ -211,8 +210,89 @@ variable "server_timezone" {
 }
 
 ////////////////////////
-// SQL Configuration
+// Virtual Machine Extensions
 ////////////////////////
+
+variable "vm_extension_bginfo" {
+  description = "az vm extension image list -o table --name BGInfo --publisher Microsoft.Compute --location <location>"
+
+  type = object({
+    enabled                    = optional(bool, true)
+    type_handler_version       = optional(string, "2.2")
+    auto_upgrade_minor_version = optional(bool, true)
+    automatic_upgrade_enabled  = optional(bool, false)
+  })
+
+  default = {}
+}
+
+variable "vm_extension_aad_login" {
+  description = "az vm extension image list -o table --name AADLoginForWindows --publisher Microsoft.Azure.ActiveDirectory --location <location>"
+
+  type = object({
+    enabled                    = optional(bool, false)
+    type_handler_version       = optional(string, "2.0")
+    auto_upgrade_minor_version = optional(bool, true)
+    automatic_upgrade_enabled  = optional(bool, false)
+  })
+
+  default = {}
+}
+
+variable "vm_extension_compute_scripts" {
+  description = "az vm extension image list -o table --name CustomScriptExtension --publisher Microsoft.Compute --location <location>"
+
+  type = list(object({
+    type_handler_version        = optional(string, "1.10")
+    auto_upgrade_minor_version  = optional(bool, true)
+    automatic_upgrade_enabled   = optional(bool, false)
+    failure_suppression_enabled = optional(bool, false)
+
+    name    = string
+    command = string
+  }))
+
+  default = []
+
+  /*default = [{
+    name    = "AADJPrivate"
+    command = "powershell.exe -Command \"New-Item -Force -Path HKLM:\\SOFTWARE\\Microsoft\\RDInfraAgent\\AADJPrivate\"; shutdown -r -t 15; exit 0"
+  }]*/
+}
+
+variable "vm_extension_azure_scripts" {
+  description = "az vm extension image list -o table --name CustomScript --publisher Microsoft.Azure.Extensions --location <location>"
+
+  type = list(object({
+    type_handler_version        = optional(string, "2.1")
+    auto_upgrade_minor_version  = optional(bool, true)
+    automatic_upgrade_enabled   = optional(bool, false)
+    failure_suppression_enabled = optional(bool, false)
+
+    name                 = string
+    command              = string
+    storage_account_name = optional(string, "")
+    storage_account_key  = optional(string, "")
+    managed_identity     = optional(map(string), {})
+    file_uris            = optional(list(string), [])
+  }))
+
+  default = []
+}
+
+////////////////////////
+// SQL Server Configuration
+////////////////////////
+
+variable "sql_update_username" {
+  type    = string
+  default = "BruceWayne"
+}
+
+variable "sql_update_password" {
+  type    = string
+  default = "!!IAmB@tman!!"
+}
 
 variable "sql_license_type" {
   description = "N/A"
@@ -269,7 +349,7 @@ variable "sql_auto_patching" {
   description = "N/A"
 
   type = object({
-    day_of_week                            = list(string)
+    day_of_week                            = string
     maintenance_window_starting_hour       = number
     maintenance_window_duration_in_minutes = number
   })
@@ -331,33 +411,59 @@ variable "sql_storage_configuration" {
     system_db_on_data_disk_enabled = optional(bool, false)
     use_managed_datadisk           = optional(bool, true)
     use_managed_logdisk            = optional(bool, true)
-    managed_datadisk_size_gb       = optional(number, 300)
-    managed_logdisk_size_gb        = optional(number, 300)
+    managed_datadisk_size_gb       = optional(number, 500)
+    managed_logdisk_size_gb        = optional(number, 500)
   })
 
   default = {}
 }
 
-variable "sql_public_access_enabled" {
-  description = "Enable public access to the SQL database on port 1433. Requires NSG to be enabled. Should not be left permanently enabled!"
+////////////////////////
+// Load Balancer
+////////////////////////
 
+variable "private_link_enabled" {
   type    = bool
   default = false
 }
 
-variable "sql_public_access_sku" {
-  description = "SKU used for creating 'Public IP' and 'LoadBalancer'. Note that the 'Basic' SKU is EOL in 2025."
+variable "nat_rules" {
+  type = list(object({
+    name          = string
+    frontend_port = number
+    backend_port  = number
+    protocol      = optional(string, "Tcp")
+  }))
 
-  type    = string
-  default = "Standard"
+  default = []
 }
 
-variable "sql_update_username" {
-  type    = string
-  default = "Laban"
+variable "nat_pool_rules" {
+  type = list(object({
+    name                = string
+    frontend_port_start = number
+    frontend_port_end   = number
+    backend_port        = number
+    protocol            = optional(string, "Tcp")
+  }))
+
+  default = []
 }
 
-variable "sql_update_password" {
-  type    = string
-  default = "S31gem@nn"
+variable "lb_rules" {
+  type = list(object({
+    name                  = string
+    frontend_port         = number
+    backend_port          = number
+    protocol              = optional(string, "Tcp")
+    disable_outbound_snat = optional(bool, false)
+    probe_enabled         = optional(bool, false)
+    probe_protocol        = optional(string, "Tcp")
+    probe_port            = optional(number)
+    interval_in_seconds   = optional(number, 60)
+    number_of_probes      = optional(number, 2)
+    probe_threshold       = optional(number, 1)
+  }))
+
+  default = []
 }
