@@ -230,7 +230,7 @@ variable "vm_extension_aad_login" {
   description = "az vm extension image list -o table --name AADLoginForWindows --publisher Microsoft.Azure.ActiveDirectory --location <location>"
 
   type = object({
-    enabled                    = optional(bool, false)
+    enabled                    = optional(bool, true)
     type_handler_version       = optional(string, "2.0")
     auto_upgrade_minor_version = optional(bool, true)
     automatic_upgrade_enabled  = optional(bool, false)

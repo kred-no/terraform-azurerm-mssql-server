@@ -37,28 +37,24 @@ locals {
     netnum     = 0
   }
 
-  lb_rules = []
-  
-  nat_pool_rules = []
-
   nat_rules = [{
-    name          = "sql-1433-tcp"
+    name          = "tcp-1433-mssql"
     frontend_port = 1433
     backend_port  = 1433
   }, {
-    name          = "rds-3389-tcp"
+    name          = "tcp-3389-rdp"
     frontend_port = 3389
     backend_port  = 3389
   }]
 
   nsg_rules = [{
-    name                   = "AllowSql"
+    name                   = "AllowSqlInbound"
     priority               = 500
     direction              = "Inbound"
     access                 = "Allow"
     protocol               = "Tcp"
     source_port_range      = "*"
-    source_address_prefix  = "*"
+    source_address_prefix  = "1433"
     destination_port_range = "1433"
   }, {
     name                   = "AllowRdp"
@@ -66,7 +62,7 @@ locals {
     direction              = "Inbound"
     access                 = "Allow"
     protocol               = "Tcp"
-    source_port_range      = "*"
+    source_port_range      = "3389"
     source_address_prefix  = "*"
     destination_port_range = "3389"
   }]
@@ -129,8 +125,6 @@ module "SQL_SERVER" {
   subnet                    = local.subnet
   vm_source_image_reference = local.source_image
   nat_rules                 = local.nat_rules
-  nat_pool_rules            = local.nat_pool_rules
-  lb_rules                  = local.lb_rules
   nsg_rules                 = local.nsg_rules
   private_link_enabled      = local.flag.private_link_enabled
 

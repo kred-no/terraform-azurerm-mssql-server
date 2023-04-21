@@ -32,7 +32,6 @@ resource "random_string" "STORAGE_ACCOUNT" {
 
   keepers = {
     prefix              = "sacc"
-    prefix_kvmanaged    = "kvsa"
     resource_group_name = data.azurerm_resource_group.MAIN.name
   }
 }
@@ -96,6 +95,10 @@ resource "azurerm_key_vault_access_policy" "CLIENT" {
   storage_permissions     = ["Update", "List", "Get", "Set", "Delete", "Purge", "ListSAS", "GetSAS", "DeleteSAS"]
 }
 
+////////////////////////
+// Storage Account Access Key Rotation
+////////////////////////
+
 resource "azurerm_key_vault_managed_storage_account" "MAIN" {
   depends_on = [azurerm_key_vault_access_policy.CLIENT]
 
@@ -158,9 +161,10 @@ module "SQL_VIRTUAL_MACHINE" {
 // Load Balancer
 ////////////////////////
 
-module "PUBLIC_LOAD_BALANCER" {
-  source = "./modules/public-load-balancer"
+module "LOAD_BALANCER" {
+  source = "./modules/load-balancer"
 
+  // Only create LoadBalancer if it is required
   count = anytrue([
     var.private_link_enabled,
     length(var.nat_rules) > 0,
@@ -168,7 +172,7 @@ module "PUBLIC_LOAD_BALANCER" {
     length(var.lb_rules) > 0,
   ]) ? 1 : 0
 
-  domain_name_label = var.vm_name
+  domain_name_label = var.vm_name // Globally Unique. E.g. <label>.<location>.cloudapp.azure.com
   nat_rules         = var.nat_rules
   nat_pool_rules    = var.nat_pool_rules
   lb_rules          = var.lb_rules

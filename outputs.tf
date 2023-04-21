@@ -15,7 +15,7 @@ output "sql_host" {
 
 output "sql_public_endpoint" {
   sensitive = true
-  value     = one(module.PUBLIC_LOAD_BALANCER[*].public_ip.fqdn)
+  value     = one(module.LOAD_BALANCER[*].public_ip.fqdn)
 }
 
 /*output "private_link_service" {
