@@ -1,14 +1,13 @@
 ////////////////////////
-// Sources
+// Resource Conditionals
 ////////////////////////
 
-data "azurerm_resource_group" "MAIN" {
-  name = var.resource_group.name
-}
-
-data "azurerm_virtual_network" "MAIN" {
-  name                = var.virtual_network.name
-  resource_group_name = var.virtual_network.resource_group_name
+locals {
+  flags = {
+    nsg_enabled              = var.subnet_nsg_enabled
+    managed_datadisk_enabled = var.sql_storage_configuration.use_managed_datadisk
+    managed_logdisk_enabled  = var.sql_storage_configuration.use_managed_logdisk
+  }
 }
 
 ////////////////////////
@@ -18,14 +17,17 @@ data "azurerm_virtual_network" "MAIN" {
 resource "azurerm_subnet" "MAIN" {
   name = var.subnet_name
 
+  private_endpoint_network_policies_enabled     = false
+  private_link_service_network_policies_enabled = false
+
   address_prefixes = [cidrsubnet(
-    element(data.azurerm_virtual_network.MAIN.address_space, var.subnet_vnet_index),
+    element(var.virtual_network.address_space, var.subnet_vnet_index),
     var.subnet_newbits,
     var.subnet_netnum,
   )]
 
-  virtual_network_name = data.azurerm_virtual_network.MAIN.name
-  resource_group_name  = data.azurerm_virtual_network.MAIN.resource_group_name
+  virtual_network_name = var.virtual_network.name
+  resource_group_name  = var.virtual_network.resource_group_name
 }
 
 ////////////////////////
@@ -39,12 +41,11 @@ resource "azurerm_network_interface" "MAIN" {
     name                          = join("-", [var.server_name, "ipcfg"])
     private_ip_address_allocation = "Dynamic"
     subnet_id                     = azurerm_subnet.MAIN.id
-    #public_ip_address_id          = one(azurerm_public_ip.MAIN[*].id)
   }
 
   tags                = var.tags
-  location            = data.azurerm_virtual_network.MAIN.location
-  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
+  location            = var.virtual_network.location
+  resource_group_name = var.virtual_network.resource_group_name
 }
 
 ////////////////////////
@@ -54,8 +55,8 @@ resource "azurerm_network_interface" "MAIN" {
 resource "azurerm_application_security_group" "MAIN" {
   name                = join("-", [var.server_name, "asg"])
   tags                = var.tags
-  location            = data.azurerm_virtual_network.MAIN.location
-  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
+  location            = var.virtual_network.location
+  resource_group_name = var.virtual_network.resource_group_name
 }
 
 resource "azurerm_network_interface_application_security_group_association" "MAIN" {
@@ -68,29 +69,28 @@ resource "azurerm_network_interface_application_security_group_association" "MAI
 ////////////////////////
 
 resource "azurerm_network_security_group" "MAIN" {
-  count = var.subnet_nsg_enabled ? 1 : 0
+  count = local.flags.nsg_enabled ? 1 : 0
 
   name                = join("-", [azurerm_subnet.MAIN.name, "nsg"])
-  location            = data.azurerm_virtual_network.MAIN.location
-  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
+  location            = var.virtual_network.location
+  resource_group_name = var.virtual_network.resource_group_name
 }
 
 resource "azurerm_subnet_network_security_group_association" "MAIN" {
-  #count = var.subnet_nsg_enabled ? 1 : 0
-  depends_on = [azurerm_network_security_group.MAIN]
+  count = local.flags.nsg_enabled ? 1 : 0
 
   subnet_id                 = azurerm_subnet.MAIN.id
   network_security_group_id = one(azurerm_network_security_group.MAIN[*].id)
 }
 
 ////////////////////////
-// NSG Rules | User Defined
+// NSG Rules | UserDefined
 ////////////////////////
 
 resource "azurerm_network_security_rule" "USER" {
   for_each = {
     for rule in var.subnet_nsg_rules : join("", [rule.direction, rule.priority]) => rule
-    if var.subnet_nsg_enabled
+    if local.flags.nsg_enabled
   }
 
   name      = each.value["name"]
@@ -120,115 +120,7 @@ resource "azurerm_network_security_rule" "USER" {
   ])
 
   network_security_group_name = one(azurerm_network_security_group.MAIN[*].name)
-  resource_group_name         = data.azurerm_virtual_network.MAIN.resource_group_name
-}
-
-////////////////////////
-// Public SQL Access
-////////////////////////
-
-locals {
-  public_sql_access_sku = "Standard"
-}
-
-resource "azurerm_public_ip" "SQL_PUBLIC" {
-  count = var.sql_public_access_enabled ? 1 : 0
-
-  name                = join("-", [var.server_name, "pip"])
-  sku                 = local.public_sql_access_sku
-  allocation_method   = "Static"
-  domain_name_label   = var.server_name
-  tags                = var.tags
-  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
-  location            = data.azurerm_virtual_network.MAIN.location
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "azurerm_lb" "SQL_PUBLIC" {
-  count = var.sql_public_access_enabled ? 1 : 0
-
-  name = join("-", [var.server_name, "sql-public"])
-  sku  = local.public_sql_access_sku
-
-  frontend_ip_configuration {
-    name                 = join("-", [var.server_name, "feip"])
-    public_ip_address_id = one(azurerm_public_ip.SQL_PUBLIC[*].id)
-  }
-
-  tags                = var.tags
-  location            = data.azurerm_virtual_network.MAIN.location
-  resource_group_name = data.azurerm_virtual_network.MAIN.resource_group_name
-}
-
-resource "azurerm_lb_backend_address_pool" "SQL_PUBLIC" {
-  count = var.sql_public_access_enabled ? 1 : 0
-
-  name            = join("-", [var.server_name, "bepool"])
-  loadbalancer_id = one(azurerm_lb.SQL_PUBLIC[*].id)
-}
-
-resource "azurerm_network_interface_backend_address_pool_association" "SQL_PUBLIC" {
-  count = var.sql_public_access_enabled ? 1 : 0
-
-  backend_address_pool_id = one(azurerm_lb_backend_address_pool.SQL_PUBLIC[*].id)
-  network_interface_id    = azurerm_network_interface.MAIN.id
-  ip_configuration_name   = join("-", [var.server_name, "ipcfg"])
-}
-
-resource "azurerm_lb_probe" "SQL_PUBLIC" {
-  count = var.sql_public_access_enabled ? 1 : 0
-
-  name                = "tcp-1433-sql"
-  protocol            = "Tcp"
-  port                = 1433
-  interval_in_seconds = 30
-  number_of_probes    = 2
-  probe_threshold     = 2
-  loadbalancer_id     = one(azurerm_lb.SQL_PUBLIC[*].id)
-}
-
-resource "azurerm_lb_rule" "SQL_PUBLIC" {
-  count = var.sql_public_access_enabled ? 1 : 0
-
-  name                           = "sql-public"
-  protocol                       = "Tcp"
-  frontend_port                  = 1433
-  backend_port                   = 1433
-  frontend_ip_configuration_name = join("-", [var.server_name, "feip"])
-
-  backend_address_pool_ids = [
-    one(azurerm_lb_backend_address_pool.SQL_PUBLIC[*].id),
-  ]
-
-  probe_id        = one(azurerm_lb_probe.SQL_PUBLIC[*].id)
-  loadbalancer_id = one(azurerm_lb.SQL_PUBLIC[*].id)
-}
-
-resource "azurerm_network_security_rule" "SQL_PUBLIC" {
-  count = alltrue([
-    var.sql_public_access_enabled,
-    var.subnet_nsg_enabled,
-  ]) ? 1 : 0
-
-  name      = "AllowSqlPublicAccess"
-  priority  = 1000
-  direction = "Inbound"
-  access    = "Allow"
-  protocol  = "Tcp"
-
-  source_port_range      = "*"
-  source_address_prefix  = "*"
-  destination_port_range = "1433"
-
-  destination_application_security_group_ids = [
-    one(azurerm_application_security_group.MAIN[*].id),
-  ]
-
-  network_security_group_name = one(azurerm_network_security_group.MAIN[*].name)
-  resource_group_name         = data.azurerm_virtual_network.MAIN.resource_group_name
+  resource_group_name         = var.virtual_network.resource_group_name
 }
 
 ////////////////////////
@@ -236,27 +128,27 @@ resource "azurerm_network_security_rule" "SQL_PUBLIC" {
 ////////////////////////
 
 resource "azurerm_managed_disk" "DATADISK" {
-  count = var.sql_storage_configuration.use_managed_datadisk ? 1 : 0
+  count = local.flags.managed_datadisk_enabled ? 1 : 0
 
   name                 = join("-", [var.server_name, "datadisk"])
   storage_account_type = "Standard_LRS"
   create_option        = "Empty"
   disk_size_gb         = var.sql_storage_configuration.managed_datadisk_size_gb
   tags                 = var.tags
-  location             = data.azurerm_resource_group.MAIN.location
-  resource_group_name  = data.azurerm_resource_group.MAIN.name
+  location             = var.resource_group.location
+  resource_group_name  = var.resource_group.name
 }
 
 resource "azurerm_managed_disk" "LOGDISK" {
-  count = var.sql_storage_configuration.use_managed_logdisk ? 1 : 0
+  count = local.flags.managed_logdisk_enabled ? 1 : 0
 
   name                 = join("-", [var.server_name, "logdisk"])
   storage_account_type = "Standard_LRS"
   create_option        = "Empty"
   disk_size_gb         = var.sql_storage_configuration.managed_logdisk_size_gb
   tags                 = var.tags
-  location             = data.azurerm_resource_group.MAIN.location
-  resource_group_name  = data.azurerm_resource_group.MAIN.name
+  location             = var.resource_group.location
+  resource_group_name  = var.resource_group.name
 }
 
 ////////////////////////
@@ -264,8 +156,7 @@ resource "azurerm_managed_disk" "LOGDISK" {
 ////////////////////////
 
 resource "azurerm_windows_virtual_machine" "MAIN" {
-
-  depends_on = [ // Create disks before VM
+  depends_on = [ // Create disks before creating VM
     azurerm_managed_disk.DATADISK,
     azurerm_managed_disk.LOGDISK,
   ]
@@ -313,12 +204,12 @@ resource "azurerm_windows_virtual_machine" "MAIN" {
   enable_automatic_updates = true
 
   tags                = var.tags
-  location            = data.azurerm_resource_group.MAIN.location
-  resource_group_name = data.azurerm_resource_group.MAIN.name
+  location            = var.resource_group.location
+  resource_group_name = var.resource_group.name
 }
 
 resource "azurerm_virtual_machine_data_disk_attachment" "DATADISK" {
-  count = var.sql_storage_configuration.use_managed_datadisk ? 1 : 0
+  count = local.flags.managed_datadisk_enabled ? 1 : 0
 
   lun                = 1
   caching            = "ReadWrite"
@@ -327,7 +218,7 @@ resource "azurerm_virtual_machine_data_disk_attachment" "DATADISK" {
 }
 
 resource "azurerm_virtual_machine_data_disk_attachment" "LOGDISK" {
-  count = var.sql_storage_configuration.use_managed_logdisk ? 1 : 0
+  count = local.flags.managed_logdisk_enabled ? 1 : 0
 
   lun                = 2
   caching            = "ReadWrite"
@@ -336,50 +227,11 @@ resource "azurerm_virtual_machine_data_disk_attachment" "LOGDISK" {
 }
 
 ////////////////////////
-// Virtual Machine Extensions
-////////////////////////
-
-resource "azurerm_virtual_machine_extension" "MAIN" {
-  count = 0
-
-  name                      = join("", [var.server_name, "ex1"])
-  publisher                 = "Microsoft.Azure.Extensions"
-  type                      = "CustomScript"
-  type_handler_version      = "2.0"
-  automatic_upgrade_enabled = true
-
-  settings = <<-HEREDOC
-  {
-    "commandToExecute": "hostname && uptime"
-  }
-  HEREDOC
-
-  tags               = var.tags
-  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
-}
-
-resource "azurerm_virtual_machine_extension" "BGINFO" {
-  count = var.optional_extensions.bginfo_enabled ? 1 : 0
-
-  name      = "BGInfo"
-  publisher = "Microsoft.Compute"
-  type      = "BGInfo"
-
-  type_handler_version       = var.optional_extensions.bginfo_version
-  auto_upgrade_minor_version = true
-  automatic_upgrade_enabled  = false
-
-  tags               = var.tags
-  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
-}
-
-////////////////////////
 // SQL Server Instance
 ////////////////////////
 
 resource "azurerm_mssql_virtual_machine" "MAIN" {
-  sql_license_type = var.sql_license_type
-
+  sql_license_type                 = var.sql_license_type
   r_services_enabled               = var.sql_r_services_enabled
   sql_connectivity_port            = var.sql_connectivity_port
   sql_connectivity_type            = var.sql_connectivity_type
@@ -406,13 +258,13 @@ resource "azurerm_mssql_virtual_machine" "MAIN" {
     system_db_on_data_disk_enabled = var.sql_storage_configuration.system_db_on_data_disk_enabled
 
     data_settings {
-      default_file_path = var.sql_storage_configuration.use_managed_datadisk ? "F:\\Data" : "C:\\Data"
-      luns              = var.sql_storage_configuration.use_managed_datadisk ? [one(azurerm_virtual_machine_data_disk_attachment.DATADISK[*].lun)] : []
+      default_file_path = local.flags.managed_datadisk_enabled ? "F:\\Data" : "C:\\Data"
+      luns              = local.flags.managed_datadisk_enabled ? [one(azurerm_virtual_machine_data_disk_attachment.DATADISK[*].lun)] : []
     }
 
     log_settings {
-      default_file_path = var.sql_storage_configuration.use_managed_logdisk ? "G:\\Log" : "C:\\Log"
-      luns              = var.sql_storage_configuration.use_managed_logdisk ? [one(azurerm_virtual_machine_data_disk_attachment.LOGDISK[*].lun)] : []
+      default_file_path = local.flags.managed_logdisk_enabled ? "G:\\Log" : "C:\\Log"
+      luns              = local.flags.managed_logdisk_enabled ? [one(azurerm_virtual_machine_data_disk_attachment.LOGDISK[*].lun)] : []
     }
 
     temp_db_settings {
@@ -489,4 +341,102 @@ resource "azurerm_mssql_virtual_machine" "MAIN" {
 
   tags               = var.tags
   virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+}
+
+////////////////////////
+// Virtual Machine Extensions
+////////////////////////
+
+resource "azurerm_virtual_machine_extension" "AAD_LOGING" {
+  count = var.vm_extension_aad_login.enabled ? 1 : 0
+
+  name      = "AADLogin"
+  publisher = "Microsoft.Azure.ActiveDirectory"
+  type      = "AADLoginForWindows"
+
+  type_handler_version       = var.vm_extension_aad_login.type_handler_version
+  auto_upgrade_minor_version = var.vm_extension_aad_login.auto_upgrade_minor_version
+  automatic_upgrade_enabled  = var.vm_extension_aad_login.automatic_upgrade_enabled
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = []
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "BGINFO" {
+  count = var.vm_extension_bginfo.enabled ? 1 : 0
+
+  name      = "BGInfo"
+  publisher = "Microsoft.Compute"
+  type      = "BGInfo"
+
+  type_handler_version       = var.vm_extension_bginfo.type_handler_version
+  auto_upgrade_minor_version = var.vm_extension_bginfo.auto_upgrade_minor_version
+  automatic_upgrade_enabled  = var.vm_extension_bginfo.automatic_upgrade_enabled
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = []
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "AZURE_SCRIPT" {
+  for_each = {
+    for script in var.vm_extension_azure_scripts : script.name => script
+  }
+
+  name      = each.key
+  publisher = "Microsoft.Azure.Extensions"
+  type      = "CustomScript"
+
+  type_handler_version        = each.value["type_handler_version"]
+  auto_upgrade_minor_version  = each.value["auto_upgrade_minor_version"]
+  automatic_upgrade_enabled   = each.value["automatic_upgrade_enabled"]
+  failure_suppression_enabled = each.value["failure_suppression_enabled"]
+
+  protected_settings = jsonencode({
+    "commandToExecute"   = each.value["command"]
+    "storageAccountName" = each.value["storage_account_name"]
+    "storageAccountKey"  = each.value["storage_account_key"]
+    "managedIdentity"    = each.value["managed_identity"]
+    "fileUris"           = each.value["file_uris"]
+  })
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = [settings, protected_settings]
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "COMPUTE_SCRIPT" {
+  for_each = {
+    for script in var.vm_extension_compute_scripts : script.name => script
+  }
+
+  name      = each.key
+  publisher = "Microsoft.Compute"
+  type      = "CustomScriptExtension"
+
+  type_handler_version        = each.value["type_handler_version"]
+  auto_upgrade_minor_version  = each.value["auto_upgrade_minor_version"]
+  automatic_upgrade_enabled   = each.value["automatic_upgrade_enabled"]
+  failure_suppression_enabled = each.value["failure_suppression_enabled"]
+
+  settings = jsonencode({
+    "commandToExecute" = each.value["command"]
+  })
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = [settings, protected_settings]
+  }
 }

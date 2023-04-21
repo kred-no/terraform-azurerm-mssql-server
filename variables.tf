@@ -1,11 +1,11 @@
 variable "deployment_type" {
   description = <<-HEREDOC
-    Choose to deploy SQL Server as a azure-sql-server, azure-sql-managed-instance or self-managed virtual machine running sql-server.
-    Valid options: [azure-sql managed-instance virtual-machine].
-    HEREDOC
+  Choose to deploy SQL Server as a azure-sql-server, azure-sql-managed-instance or self-managed virtual machine running sql-server.
+  Valid options: [azure-sql managed-instance virtual-machine].
+  HEREDOC
 
   type    = string
-  default = "azure-sql"
+  default = "virtual-machine"
 
   validation {
     error_message = "Invalid value provided."
@@ -23,7 +23,18 @@ variable "deployment_type" {
 ////////////////////////
 
 variable "resource_group" {
-  description = "N/A"
+  description = <<-HEREDOC
+  Resource Group Name is globally unique, and must be 1-90 Characters.
+  Valid characters are members of the following categories (in UnicodeCategories):
+
+    - UppercaseLetter
+    - LowercaseLetter
+    - TitlecaseLetter
+    - ModifierLetter
+    - OtherLetter
+    - DecimalDigitNumber
+
+  HEREDOC
 
   type = object({
     name     = string
@@ -54,42 +65,42 @@ variable "tags" {
 ////////////////////////
 
 variable "subnet_name" {
-  description = "N/A"
+  description = "Name of the new subnet."
 
   type    = string
   default = "SqlVmSubnet"
 }
 
 variable "subnet_vnet_index" {
-  description = "N/A"
+  description = "The VNet index for generating the subnet address (using terraform function 'cidrsubnet')."
 
   type    = number
   default = 0
 }
 
 variable "subnet_newbits" {
-  description = "N/A"
+  description = "The number of new bits to add to the VNet for creating the subnet address (using terraform function 'cidrsubnet')."
 
   type    = number
   default = 2
 }
 
 variable "subnet_netnum" {
-  description = "N/A"
+  description = "The network number to select from the generated subnets (using terraform function 'cidrsubnet')."
 
   type    = number
   default = 0
 }
 
 variable "subnet_nsg_enabled" {
-  description = "N/A"
+  description = "Enable Network Security Group for the subnet."
 
   type    = bool
   default = true
 }
 
 variable "subnet_nsg_rules" {
-  description = "N/A"
+  description = "User defined NSG rules to add to the subnet. 'Inbound' destination and 'Outbound' source defaults to the application security group of the host server network interface, unless address is provided."
 
   type = list(object({
     name                       = string
@@ -107,7 +118,7 @@ variable "subnet_nsg_rules" {
 }
 
 ////////////////////////
-// SQL Server
+// SQL Host Configuration
 ////////////////////////
 
 variable "server_name" {
@@ -200,7 +211,7 @@ variable "server_timezone" {
 }
 
 ////////////////////////
-// SQL Instance
+// SQL Configuration
 ////////////////////////
 
 variable "sql_license_type" {
@@ -328,8 +339,17 @@ variable "sql_storage_configuration" {
 }
 
 variable "sql_public_access_enabled" {
+  description = "Enable public access to the SQL database on port 1433. Requires NSG to be enabled. Should not be left permanently enabled!"
+
   type    = bool
   default = false
+}
+
+variable "sql_public_access_sku" {
+  description = "SKU used for creating 'Public IP' and 'LoadBalancer'. Note that the 'Basic' SKU is EOL in 2025."
+
+  type    = string
+  default = "Standard"
 }
 
 variable "sql_update_username" {

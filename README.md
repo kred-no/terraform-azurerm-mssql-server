@@ -57,6 +57,15 @@ git config --global core.eol lf
 # Get current public IP-address
 (Invoke-WebRequest -uri "http://ifconfig.me/ip").Content
 ```
+
+```powershell
+# Connect using Bastion Native Client (rdp)
+$BastionHost="<BASTION-HOSTNAME>"
+$ResGroup="<RESOURCE-GROUP-NAME>"
+$TargetId="<TARGET-AZURE-RESOURCE-ID>"
+
+az network bastion rdp --name $BastionHost --resource-group $ResGroup --target-resource-id $TargetId
+```
 ## References
 
 * https://github.com/kumarvna/terraform-azurerm-mssql-db/blob/master/main.tf

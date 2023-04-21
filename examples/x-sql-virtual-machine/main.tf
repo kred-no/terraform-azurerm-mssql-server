@@ -3,35 +3,48 @@
 ////////////////////////
 
 locals {
+  flag = {
+    bastion_enabled             = false
+    private_endpoint_enabled    = false
+    sql_public_endpoint_enabled = true
+  }
+
   rg_prefix          = "tf-sqlsrv"
   rg_location        = "northeurope"
   vnet_name          = "sql-example-vnet"
   vnet_address_space = ["192.168.168.0/24"]
 
-  create_test_database = false
-  bastion_enabled      = false
+  private_endpoint_address_prefix = cidrsubnet("192.168.168.0/24", 2, 2)
+  bastion_sku                     = "Basic"
+  bastion_address_prefix          = cidrsubnet("192.168.168.0/24", 2, 1)
 
-  // SQL Module
+  // SQL Module Overrides
   deployment_type           = "virtual-machine"
   sql_connectivity_type     = "PRIVATE"
-  sql_public_access_enabled = false
+
+  source_image = {
+    offer     = "sql2022-ws2022"
+    publisher = "MicrosoftSQLServer"
+    sku       = "sqldev-gen2"
+  }
 }
 
 ////////////////////////
 // Outputs
 ////////////////////////
 
-output "sql_server_id" {
+output "storage_account" {
   sensitive = true
-  value     = module.SQL_SERVER.server.id
+  value     = module.SQL_SERVER.storage_account
 }
 
 ////////////////////////
 // Core Resources
 ////////////////////////
 
-resource "random_id" "X" {
-  byte_length = 3
+resource "random_string" "RESOURCE_GROUP" {
+  length  = 12
+  special = false
 
   keepers = {
     prefix = local.rg_prefix
@@ -39,7 +52,7 @@ resource "random_id" "X" {
 }
 
 resource "azurerm_resource_group" "MAIN" {
-  name     = join("-", [random_id.X.keepers.prefix, random_id.X.hex])
+  name     = join("-", [random_string.RESOURCE_GROUP.keepers.prefix, random_string.RESOURCE_GROUP.result])
   location = local.rg_location
 }
 
@@ -51,7 +64,7 @@ resource "azurerm_virtual_network" "MAIN" {
 }
 
 ////////////////////////
-// SQL Virtual Machine
+// Module | SQL Virtual Machine
 ////////////////////////
 
 module "SQL_SERVER" {
@@ -65,8 +78,10 @@ module "SQL_SERVER" {
   // Module Config
   deployment_type = local.deployment_type
 
+  server_source_image_reference = local.source_image
+
   sql_connectivity_type     = local.sql_connectivity_type
-  sql_public_access_enabled = local.sql_public_access_enabled
+  sql_public_access_enabled = local.flag.sql_public_endpoint_enabled
 
   subnet_vnet_index = 0
   subnet_newbits    = 2
@@ -78,44 +93,24 @@ module "SQL_SERVER" {
 }
 
 ////////////////////////
-// Database
-////////////////////////
-
-resource "azurerm_mssql_database" "DEMO" {
-  count = local.create_test_database ? 1 : 0
-
-  name        = "TestDatabase"
-  collation   = "SQL_Latin1_General_CP1_CI_AS"
-  max_size_gb = 4
-  sku_name    = "S0"
-  server_id   = module.SQL_SERVER.server.id
-}
-
-////////////////////////
 // Azure Bastion
 ////////////////////////
 
 resource "azurerm_subnet" "BASTION" {
-  depends_on = [module.SQL_SERVER]
-  count      = local.bastion_enabled ? 1 : 0
+  count      = local.flag.bastion_enabled ? 1 : 0
+  depends_on = [module.SQL_SERVER] // Create AFTER module
 
-  name = "AzureBastionSubnet"
-
-  address_prefixes = [cidrsubnet(
-    element(azurerm_virtual_network.MAIN.address_space, 0), // VNet index
-    2,                                                      // Add network bits
-    1,                                                      // Network number
-  )]
-
+  name                 = "AzureBastionSubnet"
+  address_prefixes     = [local.bastion_address_prefix]
   resource_group_name  = azurerm_virtual_network.MAIN.resource_group_name
   virtual_network_name = azurerm_virtual_network.MAIN.name
 }
 
 resource "azurerm_public_ip" "BASTION" {
-  depends_on = [module.SQL_SERVER]
-  count      = local.bastion_enabled ? 1 : 0
+  count      = local.flag.bastion_enabled ? 1 : 0
+  depends_on = [module.SQL_SERVER] // Create AFTER module
 
-  name                = "sql-pip"
+  name                = join("-", [azurerm_resource_group.MAIN.name, "bastion-pip"])
   allocation_method   = "Static"
   sku                 = "Standard"
   location            = azurerm_virtual_network.MAIN.location
@@ -123,11 +118,11 @@ resource "azurerm_public_ip" "BASTION" {
 }
 
 resource "azurerm_bastion_host" "MAIN" {
-  depends_on = [module.SQL_SERVER] // Create AFTER module
-  count      = local.bastion_enabled ? 1 : 0
+  count = local.flag.bastion_enabled ? 1 : 0
 
-  name = "sql-bastion"
-  sku  = "Basic"
+  name              = join("-", [azurerm_resource_group.MAIN.name, "bastion"])
+  sku               = local.bastion_sku
+  tunneling_enabled = local.bastion_sku != "Standard" ? false : true
 
   ip_configuration {
     name                 = "bastion-ipcfg"
@@ -138,3 +133,38 @@ resource "azurerm_bastion_host" "MAIN" {
   location            = azurerm_virtual_network.MAIN.location
   resource_group_name = azurerm_virtual_network.MAIN.resource_group_name
 }
+
+////////////////////////
+// Example | Private Endpoint
+////////////////////////
+
+/*
+resource "azurerm_subnet" "PRIVATE_ENDPOINT" {
+  count      = local.flag.private_endpoint_enabled ? 1 : 0
+  depends_on = [module.SQL_SERVER] // Create AFTER module
+
+  name             = "PrivateEndpointSubnet"
+  address_prefixes = [local.private_endpoint_address_prefix]
+
+  service_endpoints                         = []
+  private_endpoint_network_policies_enabled = false
+
+  resource_group_name  = azurerm_virtual_network.MAIN.resource_group_name
+  virtual_network_name = azurerm_virtual_network.MAIN.name
+}
+
+resource "azurerm_private_endpoint" "PRIVATE_ENDPOINT" {
+  count = local.flag.private_endpoint_enabled ? 1 : 0
+
+  name      = "sql-private-endpoint"
+  subnet_id = one(azurerm_subnet.PRIVATE_ENDPOINT[*].id)
+
+  private_service_connection {
+    name                           = "sql-privateservice-connection"
+    private_connection_resource_id = module.SQL_SERVER.private_link_service.id
+    is_manual_connection           = false
+  }
+
+  location            = azurerm_virtual_network.MAIN.location
+  resource_group_name = azurerm_virtual_network.MAIN.resource_group_name
+}*/
