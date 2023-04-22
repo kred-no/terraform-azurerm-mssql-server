@@ -108,7 +108,7 @@ resource "azurerm_network_interface_nat_rule_association" "MAIN" {
   for_each = {
     for rule in var.nat_rules : rule.name => rule
   }
-  
+
   network_interface_id  = var.nic.id
   ip_configuration_name = var.nic.ip_configuration.0.name
   nat_rule_id           = azurerm_lb_nat_rule.NIC[each.key].id

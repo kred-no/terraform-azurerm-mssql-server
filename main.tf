@@ -19,14 +19,14 @@ data "azurerm_virtual_network" "MAIN" {
 
 data "azurerm_public_ip_prefix" "MAIN" {
   count = length(var.public_ip_prefix[*]) > 0 ? 1 : 0
-  
+
   name                = var.public_ip_prefix.name
   resource_group_name = var.public_ip_prefix.resource_group_name
 }
 
 data "azurerm_nat_gateway" "MAIN" {
   count = length(var.nat_gateway[*]) > 0 ? 1 : 0
-  
+
   name                = var.nat_gateway.name
   resource_group_name = var.nat_gateway.resource_group_name
 }
@@ -99,9 +99,9 @@ resource "azurerm_key_vault" "MAIN" {
 
 resource "azurerm_key_vault_access_policy" "CLIENT" {
   key_vault_id = azurerm_key_vault.MAIN.id
-  
-  tenant_id    = data.azurerm_client_config.CURRENT.tenant_id
-  object_id    = data.azurerm_client_config.CURRENT.object_id
+
+  tenant_id = data.azurerm_client_config.CURRENT.tenant_id
+  object_id = data.azurerm_client_config.CURRENT.object_id
 
   certificate_permissions = ["Create", "List", "Get", "Delete", "Purge"]
   key_permissions         = ["Create", "List", "Get", "Delete", "Purge", "GetRotationPolicy", "SetRotationPolicy", "Rotate"]
@@ -123,6 +123,11 @@ resource "azurerm_key_vault_managed_storage_account" "MAIN" {
   key_vault_id                 = azurerm_key_vault.MAIN.id
   storage_account_id           = azurerm_storage_account.MAIN.id
 }
+
+////////////////////////
+// Random Password(s)
+////////////////////////
+
 
 ////////////////////////
 // SQL Virtual Machine

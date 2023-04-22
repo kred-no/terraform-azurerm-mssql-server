@@ -18,6 +18,12 @@ variable "sql_type" {
   }
 }
 
+variable "unique_prefix" {
+  description = "TODO: Prefix to assign globally unique resource names. Example: Public IP domain-name label."
+
+  type    = string
+  default = null
+}
 ////////////////////////
 // External Resources
 ////////////////////////

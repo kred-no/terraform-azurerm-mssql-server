@@ -31,11 +31,16 @@ locals {
   // Module Config
   sql_type = "virtual-machine"
 
+  vm_size            = "Standard_D2ds_v4" # Standard_B4ms
+  vm_priority        = "Spot"
+  vm_eviction_policy = "Delete"
+  vm_max_bid_price   = "-1"
+
   subnet = {
     vnet_index = 0
     newbits    = 2
     netnum     = 0
-    
+
     service_endpoints = [
       "Microsoft.KeyVault",
       "Microsoft.Storage",
@@ -46,7 +51,7 @@ locals {
     name          = "tcp-1433-mssql"
     frontend_port = 1433
     backend_port  = 1433
-  }, {
+    }, {
     name          = "tcp-3389-rdp"
     frontend_port = 3389
     backend_port  = 3389
@@ -54,25 +59,25 @@ locals {
 
   nsg_rules = [{
     name                   = "AllowSqlInbound"
-    priority               = 500
+    priority               = 4096
     direction              = "Inbound"
     access                 = "Allow"
     protocol               = "Tcp"
+    source_address_prefix  = "Internet"
     source_port_range      = "*"
-    source_address_prefix  = "1433"
     destination_port_range = "1433"
-  }, {
+    }, {
     name                   = "AllowRdpInbound"
-    priority               = 499
+    priority               = 4095
     direction              = "Inbound"
     access                 = "Allow"
     protocol               = "Tcp"
-    source_port_range      = "3389"
-    source_address_prefix  = "*"
+    source_address_prefix  = "Internet"
+    source_port_range      = "*"
     destination_port_range = "3389"
   }]
 
-  source_image = {
+  vm_source_image = {
     offer     = "sql2022-ws2022"
     publisher = "MicrosoftSQLServer"
     sku       = "sqldev-gen2"
@@ -83,9 +88,14 @@ locals {
 // Outputs
 ////////////////////////
 
-output "storage_account" {
+output "sql_storage_account" {
   sensitive = true
   value     = module.SQL_SERVER.storage_account
+}
+
+output "sql_fqdn" {
+  sensitive = true
+  value     = module.SQL_SERVER.public_ip.fqdn
 }
 
 ////////////////////////
@@ -126,12 +136,18 @@ module "SQL_SERVER" {
   ]
 
   // Module Config
-  sql_type                  = local.sql_type
-  subnet                    = local.subnet
-  vm_source_image_reference = local.source_image
-  nat_rules                 = local.nat_rules
-  nsg_rules                 = local.nsg_rules
-  private_link_enabled      = local.flag.private_link_enabled
+  sql_type = local.sql_type
+  subnet   = local.subnet
+
+  vm_size                   = local.vm_size
+  vm_priority               = local.vm_priority
+  vm_eviction_policy        = local.vm_eviction_policy
+  vm_max_bid_price          = local.vm_max_bid_price
+  vm_source_image_reference = local.vm_source_image
+
+  nat_rules            = local.nat_rules
+  nsg_rules            = local.nsg_rules
+  private_link_enabled = local.flag.private_link_enabled
 
   // Resource References
   resource_group  = azurerm_resource_group.MAIN

@@ -13,9 +13,9 @@ output "sql_host" {
   value     = one(module.SQL_VIRTUAL_MACHINE[*].sql_host)
 }
 
-output "sql_public_endpoint" {
+output "public_ip" {
   sensitive = true
-  value     = one(module.LOAD_BALANCER[*].public_ip.fqdn)
+  value     = one(module.LOAD_BALANCER[*].public_ip)
 }
 
 /*output "private_link_service" {

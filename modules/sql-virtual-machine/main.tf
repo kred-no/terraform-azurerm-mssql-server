@@ -33,7 +33,7 @@ resource "azurerm_subnet" "MAIN" {
 
 resource "azurerm_subnet_nat_gateway_association" "MAIN" {
   count = length(var.nat_gateway[*]) > 0 ? 1 : 0
-  
+
   subnet_id      = azurerm_subnet.MAIN.id
   nat_gateway_id = var.nat_gateway.MAIn.id
 }
