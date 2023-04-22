@@ -2,21 +2,12 @@
 // Public IP
 ////////////////////////
 
-resource "azurerm_public_ip_prefix" "MAIN" {
-  name                = format("%s-ip-prefix", local.prefix)
-  sku                 = local.sku
-  prefix_length       = local.prefix_length
-  tags                = var.tags
-  location            = var.vnet.location
-  resource_group_name = var.vnet.resource_group_name
-}
-
 resource "azurerm_public_ip" "MAIN" {
   name                = format("%s-public-ip", local.prefix)
+  public_ip_prefix_id = try(var.pip_prefix.MAIN.id, null)
   sku                 = local.sku
   allocation_method   = local.allocation_method
   domain_name_label   = var.domain_name_label
-  public_ip_prefix_id = azurerm_public_ip_prefix.MAIN.id
   tags                = var.tags
   resource_group_name = var.vnet.resource_group_name
   location            = var.vnet.location

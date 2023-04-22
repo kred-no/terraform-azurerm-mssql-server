@@ -19,6 +19,7 @@ resource "azurerm_subnet" "MAIN" {
 
   private_endpoint_network_policies_enabled     = false
   private_link_service_network_policies_enabled = false
+  service_endpoints                             = var.subnet.service_endpoints
 
   address_prefixes = [cidrsubnet(
     element(var.virtual_network.address_space, var.subnet.vnet_index),
@@ -28,6 +29,13 @@ resource "azurerm_subnet" "MAIN" {
 
   virtual_network_name = var.virtual_network.name
   resource_group_name  = var.virtual_network.resource_group_name
+}
+
+resource "azurerm_subnet_nat_gateway_association" "MAIN" {
+  count = length(var.nat_gateway[*]) > 0 ? 1 : 0
+  
+  subnet_id      = azurerm_subnet.MAIN.id
+  nat_gateway_id = var.nat_gateway.MAIn.id
 }
 
 ////////////////////////
@@ -241,104 +249,6 @@ resource "azurerm_key_vault_access_policy" "MAIN" {
 }
 
 ////////////////////////
-// Virtual Machine Extensions
-////////////////////////
-
-resource "azurerm_virtual_machine_extension" "AAD_LOGING" {
-  count = var.vm_extension_aad_login.enabled ? 1 : 0
-
-  name      = "AADLogin"
-  publisher = "Microsoft.Azure.ActiveDirectory"
-  type      = "AADLoginForWindows"
-
-  type_handler_version       = var.vm_extension_aad_login.type_handler_version
-  auto_upgrade_minor_version = var.vm_extension_aad_login.auto_upgrade_minor_version
-  automatic_upgrade_enabled  = var.vm_extension_aad_login.automatic_upgrade_enabled
-
-  tags               = var.tags
-  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
-
-  lifecycle {
-    ignore_changes = []
-  }
-}
-
-resource "azurerm_virtual_machine_extension" "BGINFO" {
-  count = var.vm_extension_bginfo.enabled ? 1 : 0
-
-  name      = "BGInfo"
-  publisher = "Microsoft.Compute"
-  type      = "BGInfo"
-
-  type_handler_version       = var.vm_extension_bginfo.type_handler_version
-  auto_upgrade_minor_version = var.vm_extension_bginfo.auto_upgrade_minor_version
-  automatic_upgrade_enabled  = var.vm_extension_bginfo.automatic_upgrade_enabled
-
-  tags               = var.tags
-  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
-
-  lifecycle {
-    ignore_changes = []
-  }
-}
-
-resource "azurerm_virtual_machine_extension" "AZURE_SCRIPT" {
-  for_each = {
-    for script in var.vm_extension_azure_scripts : script.name => script
-  }
-
-  name      = each.key
-  publisher = "Microsoft.Azure.Extensions"
-  type      = "CustomScript"
-
-  type_handler_version        = each.value["type_handler_version"]
-  auto_upgrade_minor_version  = each.value["auto_upgrade_minor_version"]
-  automatic_upgrade_enabled   = each.value["automatic_upgrade_enabled"]
-  failure_suppression_enabled = each.value["failure_suppression_enabled"]
-
-  protected_settings = jsonencode({
-    "commandToExecute"   = each.value["command"]
-    "storageAccountName" = each.value["storage_account_name"]
-    "storageAccountKey"  = each.value["storage_account_key"]
-    "managedIdentity"    = each.value["managed_identity"]
-    "fileUris"           = each.value["file_uris"]
-  })
-
-  tags               = var.tags
-  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
-
-  lifecycle {
-    ignore_changes = [settings, protected_settings]
-  }
-}
-
-resource "azurerm_virtual_machine_extension" "COMPUTE_SCRIPT" {
-  for_each = {
-    for script in var.vm_extension_compute_scripts : script.name => script
-  }
-
-  name      = each.key
-  publisher = "Microsoft.Compute"
-  type      = "CustomScriptExtension"
-
-  type_handler_version        = each.value["type_handler_version"]
-  auto_upgrade_minor_version  = each.value["auto_upgrade_minor_version"]
-  automatic_upgrade_enabled   = each.value["automatic_upgrade_enabled"]
-  failure_suppression_enabled = each.value["failure_suppression_enabled"]
-
-  settings = jsonencode({
-    "commandToExecute" = each.value["command"]
-  })
-
-  tags               = var.tags
-  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
-
-  lifecycle {
-    ignore_changes = [settings, protected_settings]
-  }
-}
-
-////////////////////////
 // SQL Server Instance
 ////////////////////////
 
@@ -455,3 +365,120 @@ resource "azurerm_mssql_virtual_machine" "MAIN" {
   virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
 }
 
+////////////////////////
+// Virtual Machine Extensions
+////////////////////////
+// Move to separate module!
+
+resource "azurerm_virtual_machine_extension" "AAD_LOGIN" {
+  count      = var.vm_extension_aad_login.enabled ? 1 : 0
+  depends_on = [azurerm_mssql_virtual_machine.MAIN] // Create after MSSQL server deployed
+
+  name      = "AADLogin"
+  publisher = "Microsoft.Azure.ActiveDirectory"
+  type      = "AADLoginForWindows"
+
+  type_handler_version       = var.vm_extension_aad_login.type_handler_version
+  auto_upgrade_minor_version = var.vm_extension_aad_login.auto_upgrade_minor_version
+  automatic_upgrade_enabled  = var.vm_extension_aad_login.automatic_upgrade_enabled
+
+  // terraform-provider-azurerm Issue #7748 - Bug in AAD Extension
+  // See:
+  // - https://www.rozemuller.com/how-to-join-azure-ad-automated/
+  // - https://github.com/hashicorp/terraform-provider-azurerm/issues/7748
+  //
+  //  Intune mdmId: "0000000a-0000-0000-c000-000000000000"
+  //  VM mdmId: azurerm_windows_virtual_machine.MAIN.identity.0.principal_id ?
+  #settings = jsonencode({
+  #  "mdmId" = "0000000a-0000-0000-c000-000000000000"
+  #})
+
+  /*protected_settings = jsonencode({})*/
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = [settings, protected_settings]
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "BGINFO" {
+  count      = var.vm_extension_bginfo.enabled ? 1 : 0
+  depends_on = [azurerm_mssql_virtual_machine.MAIN] // Create after MSSQL server deployed
+
+  name      = "BGInfo"
+  publisher = "Microsoft.Compute"
+  type      = "BGInfo"
+
+  type_handler_version       = var.vm_extension_bginfo.type_handler_version
+  auto_upgrade_minor_version = var.vm_extension_bginfo.auto_upgrade_minor_version
+  automatic_upgrade_enabled  = var.vm_extension_bginfo.automatic_upgrade_enabled
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = []
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "AZURE_CUSTOM_SCRIPT" {
+  for_each = {
+    for script in var.vm_extension_azure_scripts : script.name => script
+  }
+
+  depends_on = [azurerm_mssql_virtual_machine.MAIN]
+
+  name      = each.key
+  publisher = "Microsoft.Azure.Extensions"
+  type      = "CustomScript"
+
+  type_handler_version        = each.value["type_handler_version"]
+  auto_upgrade_minor_version  = each.value["auto_upgrade_minor_version"]
+  automatic_upgrade_enabled   = each.value["automatic_upgrade_enabled"]
+  failure_suppression_enabled = each.value["failure_suppression_enabled"]
+
+  protected_settings = jsonencode({
+    "commandToExecute"   = each.value["command"]
+    "storageAccountName" = each.value["storage_account_name"]
+    "storageAccountKey"  = each.value["storage_account_key"]
+    "managedIdentity"    = each.value["managed_identity"]
+    "fileUris"           = each.value["file_uris"]
+  })
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = [settings, protected_settings]
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "COMPUTE_CUSTOM_SCRIPT" {
+  for_each = {
+    for script in var.vm_extension_compute_scripts : script.name => script
+  }
+
+  depends_on = [azurerm_mssql_virtual_machine.MAIN] // Create after MSSQL server deployed
+
+  name      = each.key
+  publisher = "Microsoft.Compute"
+  type      = "CustomScriptExtension"
+
+  type_handler_version        = each.value["type_handler_version"]
+  auto_upgrade_minor_version  = each.value["auto_upgrade_minor_version"]
+  automatic_upgrade_enabled   = each.value["automatic_upgrade_enabled"]
+  failure_suppression_enabled = each.value["failure_suppression_enabled"]
+
+  settings = jsonencode({
+    "commandToExecute" = each.value["command"]
+  })
+
+  tags               = var.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.MAIN.id
+
+  lifecycle {
+    ignore_changes = [settings, protected_settings]
+  }
+}

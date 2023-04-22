@@ -15,12 +15,12 @@ locals {
 ////////////////////////
 
 variable "tags" {}
+variable "pip_prefix" {}
 variable "vnet" {}
 variable "subnet" {}
 variable "nsg" {}
 variable "nic" {}
 variable "asg" {}
-
 
 ////////////////////////
 // Create Resources

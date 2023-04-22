@@ -8,6 +8,18 @@ Deploy SQL Server on Azure
 | PaaS     | Azure SQL                    | N/A            | N/A            |
 | PaaS     | Azure SQL (Managed Instance) | N/A            | N/A            |
 
+## Features & Limitations
+  
+  1. Deploy an SQL server endpoint, using SQL Virtual Machine.
+  1. Optionally add managed datadisks for data and/or logs.
+  1. Join VM to AAD.
+  1. Access SQL Host & SQL Server using "Load Balancer" IP (NAT/LB), or create a "Private Service Endpoint"
+  1. Creates a customizable subnet.
+
+  LIMITATIONS
+  
+  1. "SQL Virtual Machine" deployment deploys a single standalone VM
+
 
 ## Virtual Machine Extensions
 

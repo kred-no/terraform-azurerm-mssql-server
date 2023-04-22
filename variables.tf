@@ -1,7 +1,7 @@
-variable "deployment_type" {
+variable "sql_type" {
   description = <<-HEREDOC
   Choose to deploy SQL Server as a azure-sql-server, azure-sql-managed-instance or self-managed virtual machine running sql-server.
-  Valid options: [azure-sql managed-instance virtual-machine].
+  Current valid options: [virtual-machine].
   HEREDOC
 
   type    = string
@@ -11,10 +11,10 @@ variable "deployment_type" {
     error_message = "Invalid value provided."
 
     condition = contains([
-      "azure-sql",
-      "managed-instance",
+      #"azure-sql",
+      #"managed-instance",
       "virtual-machine",
-    ], var.deployment_type)
+    ], var.sql_type)
   }
 }
 
@@ -57,6 +57,34 @@ variable "virtual_network" {
   default = null
 }
 
+variable "public_ip_prefix" {
+  description = <<-HEREDOC
+  [virtual machine]
+    Optional reference to an EXISTING Public IP Prefix, for use by Public IPs created by this module.
+  HEREDOC
+
+  type = object({
+    name                = string
+    resource_group_name = string
+  })
+
+  default = null
+}
+
+variable "nat_gateway" {
+  description = <<-HEREDOC
+  [virtual machine]
+    Optional reference to an EXISTING NAT Gateway, for use by subnet created by this module.
+  HEREDOC
+
+  type = object({
+    name                = string
+    resource_group_name = string
+  })
+
+  default = null
+}
+
 variable "tags" {
   description = "Tags added for ALL new resources."
 
@@ -71,7 +99,7 @@ variable "tags" {
 variable "subnet" {
   description = <<-HEREDOC
   [virtual machine]
-    Creates a new subnet. NSG can optionally be disabled.
+    Creates a NEW subnet for SQL resource(s). NSG can optionally be disabled.
     The 'vnet_index', 'newbits' and 'netnum' defines a subnet prefix, using terraform the function 'cidrsubnet'.
     
     Examples, using the VNet ["192.168.168.0/24", "10.0.0.0/16"]
@@ -80,11 +108,12 @@ variable "subnet" {
   HEREDOC
 
   type = object({
-    name        = optional(string, "SqlVirtualMachineSubnet")
-    nsg_enabled = optional(bool, true)
-    vnet_index  = optional(number, 0)
-    newbits     = optional(number, 2)
-    netnum      = optional(number, 0)
+    name              = optional(string, "SqlVirtualMachineSubnet")
+    nsg_enabled       = optional(bool, true)
+    vnet_index        = optional(number, 0)
+    newbits           = optional(number, 2)
+    netnum            = optional(number, 0)
+    service_endpoints = optional(list(string))
   })
 
   default = {}
@@ -227,7 +256,12 @@ variable "vm_extension_bginfo" {
 }
 
 variable "vm_extension_aad_login" {
-  description = "az vm extension image list -o table --name AADLoginForWindows --publisher Microsoft.Azure.ActiveDirectory --location <location>"
+  description = <<-HEREDOC
+  NOTE:
+  This extension is not supposed to be working for Windows Server (only supported for windows 10/11 devices).
+  Seems to work if RG name is below 15 characters..
+  > az vm extension image list -o table --name AADLoginForWindows --publisher Microsoft.Azure.ActiveDirectory --location <location>
+  HEREDOC
 
   type = object({
     enabled                    = optional(bool, true)
@@ -411,8 +445,8 @@ variable "sql_storage_configuration" {
     system_db_on_data_disk_enabled = optional(bool, false)
     use_managed_datadisk           = optional(bool, true)
     use_managed_logdisk            = optional(bool, true)
-    managed_datadisk_size_gb       = optional(number, 500)
-    managed_logdisk_size_gb        = optional(number, 500)
+    managed_datadisk_size_gb       = optional(number, 255)
+    managed_logdisk_size_gb        = optional(number, 255)
   })
 
   default = {}

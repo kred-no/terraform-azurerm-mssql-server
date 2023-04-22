@@ -17,6 +17,20 @@ data "azurerm_virtual_network" "MAIN" {
   resource_group_name = var.virtual_network.resource_group_name
 }
 
+data "azurerm_public_ip_prefix" "MAIN" {
+  count = length(var.public_ip_prefix[*]) > 0 ? 1 : 0
+  
+  name                = var.public_ip_prefix.name
+  resource_group_name = var.public_ip_prefix.resource_group_name
+}
+
+data "azurerm_nat_gateway" "MAIN" {
+  count = length(var.nat_gateway[*]) > 0 ? 1 : 0
+  
+  name                = var.nat_gateway.name
+  resource_group_name = var.nat_gateway.resource_group_name
+}
+
 ////////////////////////
 // Azure Storage Account
 ////////////////////////
@@ -116,7 +130,7 @@ resource "azurerm_key_vault_managed_storage_account" "MAIN" {
 
 module "SQL_VIRTUAL_MACHINE" {
   source = "./modules/sql-virtual-machine"
-  count  = var.deployment_type != "virtual-machine" ? 0 : 1
+  count  = var.sql_type != "virtual-machine" ? 0 : 1
 
   subnet    = var.subnet
   nsg_rules = var.nsg_rules
@@ -155,6 +169,7 @@ module "SQL_VIRTUAL_MACHINE" {
   storage_account = azurerm_storage_account.MAIN
   resource_group  = data.azurerm_resource_group.MAIN
   virtual_network = data.azurerm_virtual_network.MAIN
+  nat_gateway     = one(data.azurerm_nat_gateway.MAIN[*])
 }
 
 ////////////////////////
@@ -172,14 +187,17 @@ module "LOAD_BALANCER" {
     length(var.lb_rules) > 0,
   ]) ? 1 : 0
 
+  depends_on = [module.SQL_VIRTUAL_MACHINE]
+
   domain_name_label = var.vm_name // Globally Unique. E.g. <label>.<location>.cloudapp.azure.com
   nat_rules         = var.nat_rules
   nat_pool_rules    = var.nat_pool_rules
   lb_rules          = var.lb_rules
 
   // References
-  tags = var.tags
-  vnet = data.azurerm_virtual_network.MAIN
+  tags       = var.tags
+  vnet       = data.azurerm_virtual_network.MAIN
+  pip_prefix = one(data.azurerm_public_ip_prefix.MAIN[*])
 
   subnet = one(module.SQL_VIRTUAL_MACHINE[*].subnet)
   nic    = one(module.SQL_VIRTUAL_MACHINE[*].network_interface)

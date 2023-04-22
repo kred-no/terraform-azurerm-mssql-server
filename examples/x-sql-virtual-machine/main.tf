@@ -18,10 +18,10 @@ locals {
   }
 
   // Test Resources
-  rg_prefix   = "tf-sqlsrv"
-  rg_location = "northeurope"
+  rg_prefix   = "TFSQLVM"
+  rg_location = "westeurope"
 
-  vnet_name          = "sql-example-vnet"
+  vnet_name          = "SQL-EXAMPLE-VNET"
   vnet_address_space = ["192.168.168.0/24"]
 
   private_endpoint_address_prefix = cidrsubnet("192.168.168.0/24", 2, 2)
@@ -29,12 +29,17 @@ locals {
   bastion_sku                     = "Basic"
 
   // Module Config
-  deployment_type = "virtual-machine"
+  sql_type = "virtual-machine"
 
   subnet = {
     vnet_index = 0
     newbits    = 2
     netnum     = 0
+    
+    service_endpoints = [
+      "Microsoft.KeyVault",
+      "Microsoft.Storage",
+    ]
   }
 
   nat_rules = [{
@@ -57,7 +62,7 @@ locals {
     source_address_prefix  = "1433"
     destination_port_range = "1433"
   }, {
-    name                   = "AllowRdp"
+    name                   = "AllowRdpInbound"
     priority               = 499
     direction              = "Inbound"
     access                 = "Allow"
@@ -88,7 +93,7 @@ output "storage_account" {
 ////////////////////////
 
 resource "random_string" "RESOURCE_GROUP" {
-  length  = 12
+  length  = 6
   special = false
 
   keepers = {
@@ -121,7 +126,7 @@ module "SQL_SERVER" {
   ]
 
   // Module Config
-  deployment_type           = local.deployment_type
+  sql_type                  = local.sql_type
   subnet                    = local.subnet
   vm_source_image_reference = local.source_image
   nat_rules                 = local.nat_rules

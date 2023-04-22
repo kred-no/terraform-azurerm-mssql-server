@@ -4,6 +4,7 @@
 
 variable "resource_group" {}
 variable "virtual_network" {}
+variable "nat_gateway" {}
 variable "tags" {}
 variable "key_vault" {}
 variable "storage_account" {}
