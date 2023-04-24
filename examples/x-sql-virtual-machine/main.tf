@@ -1,9 +1,4 @@
 // Creates a virtual machine running Microsoft SQL Server
-//
-// Options:
-//   - Default: Access SQL Server & Rdp via NAT. Blocs
-//   - Option: Access SQL server host using Azure Bastion Host
-//   - Option: Create an Azure Private Link Service for the Load Balancer & access resources via Private Link.
 
 ////////////////////////
 // Test Config
@@ -60,10 +55,10 @@ locals {
     source_port_range      = "*"
     destination_port_range = "1433"
     }, {
-    name                   = "DenyRdpInbound"
+    name                   = "AllowRdpInbound"
     priority               = 1999
     direction              = "Inbound"
-    access                 = "Deny"
+    access                 = "Allow"
     protocol               = "Tcp"
     source_address_prefix  = "Internet"
     source_port_range      = "*"
