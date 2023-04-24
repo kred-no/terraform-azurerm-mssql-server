@@ -12,7 +12,7 @@
 locals {
 
   flag = {
-    bastion_enabled = false
+    bastion_enabled = true
     lb_enabled      = true
   }
 
@@ -20,7 +20,7 @@ locals {
   rg_prefix              = "sqlvm"
   rg_location            = "westeurope"
   vnet_name              = "SQL-EXAMPLE-VNET"
-  vnet_address_space     = ["192.168.168.0/24"]
+  vnet_address_space     = cidrsubnet("192.168.168.0/24", 0, 0)
   subnet_address_prefix  = cidrsubnet("192.168.168.0/24", 2, 0)
   bastion_address_prefix = cidrsubnet("192.168.168.0/24", 2, 1)
   bastion_sku            = "Basic"
@@ -98,7 +98,7 @@ resource "azurerm_resource_group" "MAIN" {
 
 resource "azurerm_virtual_network" "MAIN" {
   name          = local.vnet_name
-  address_space = local.vnet_address_space
+  address_space = [local.vnet_address_space]
 
   resource_group_name = azurerm_resource_group.MAIN.name
   location            = azurerm_resource_group.MAIN.location
@@ -359,33 +359,3 @@ resource "azurerm_lb_rule" "MAIN" {
   frontend_ip_configuration_name = one(azurerm_lb.MAIN[*].frontend_ip_configuration.0.name)
   loadbalancer_id                = one(azurerm_lb.MAIN[*].id)
 }
-
-////////////////////////
-// Load Balancer | Private Link Service
-////////////////////////
-
-/*resource "azurerm_private_link_service" "MAIN" {
-  count = 0
-
-  name = format("%s-private-link", local.prefix)
-
-  nat_ip_configuration {
-    primary   = true
-    name      = "primary"
-    subnet_id = var.subnet.id
-  }
-
-  nat_ip_configuration {
-    primary   = false
-    name      = "secondary"
-    subnet_id = var.subnet.id
-  }
-
-  load_balancer_frontend_ip_configuration_ids = [
-    azurerm_lb.MAIN.frontend_ip_configuration.0.id
-  ]
-
-  location            = var.vnet.location
-  resource_group_name = var.vnet.resource_group_name
-}
-*/
