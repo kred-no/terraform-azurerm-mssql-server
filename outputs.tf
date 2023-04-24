@@ -1,34 +1,19 @@
-output "subnet" {
-  sensitive = false
-  value     = one(module.SQL_VIRTUAL_MACHINE[*].subnet)
+output "virtual_machine" {
+  sensitive = true
+  value     = azurerm_windows_virtual_machine.MAIN
 }
 
-output "sql_server" {
+output "mssql_server" {
   sensitive = true
-  value     = one(module.SQL_VIRTUAL_MACHINE[*].sql_server)
+  value     = azurerm_mssql_virtual_machine.MAIN
 }
 
-output "sql_host" {
+output "application_security_group" {
   sensitive = true
-  value     = one(module.SQL_VIRTUAL_MACHINE[*].sql_host)
+  value     = azurerm_application_security_group.MAIN
 }
 
-output "public_ip" {
+output "network_interface" {
   sensitive = true
-  value     = one(module.LOAD_BALANCER[*].public_ip)
-}
-
-/*output "private_link_service" {
-  sensitive = false
-  value     = one(module.SQL_VIRTUAL_MACHINE[*].private_link_service)
-}*/
-
-output "key_vault" {
-  sensitive = true
-  value     = azurerm_key_vault.MAIN
-}
-
-output "storage_account" {
-  sensitive = true
-  value     = azurerm_storage_account.MAIN
+  value     = azurerm_network_interface.MAIN
 }

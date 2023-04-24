@@ -1,94 +1,27 @@
-variable "sql_type" {
-  description = <<-HEREDOC
-  Choose to deploy SQL Server as a azure-sql-server, azure-sql-managed-instance or self-managed virtual machine running sql-server.
-  Current valid options: [virtual-machine].
-  HEREDOC
-
-  type    = string
-  default = "virtual-machine"
-
-  validation {
-    error_message = "Invalid value provided."
-
-    condition = contains([
-      #"azure-sql",
-      #"managed-instance",
-      "virtual-machine",
-    ], var.sql_type)
-  }
-}
-
-variable "unique_prefix" {
-  description = "TODO: Prefix to assign globally unique resource names. Example: Public IP domain-name label."
-
-  type    = string
-  default = null
-}
 ////////////////////////
-// External Resources
+// Data Sources
 ////////////////////////
 
 variable "resource_group" {
-  description = <<-HEREDOC
-  Reference to an EXISTING resource group to use for creating resources.
-  The "Resource Group" name is globally unique, and must consist of 1-90 Characters.
-  
-  Valid character categories (UnicodeCategories):
-    - UppercaseLetter
-    - LowercaseLetter
-    - TitlecaseLetter
-    - ModifierLetter
-    - OtherLetter
-    - DecimalDigitNumber
-  HEREDOC
+  description = "Reference to an EXISTING resource group to use for creating resources."
 
   type = object({
-    name     = string
-    location = string
+    name = string
   })
 }
 
-variable "virtual_network" {
-  description = <<-HEREDOC
-  [virtual machine]
-    Reference to an EXISTING virtual network.
-    Any new network-related resources will be created in the same resource group as this virtual network.
-  HEREDOC
+////////////////////////
+// Subnet
+////////////////////////
+
+variable "subnet" {
+  description = "Reference to an EXISTING Subnet."
 
   type = object({
-    name                = string
-    resource_group_name = string
+    name                 = string
+    virtual_network_name = string
+    resource_group_name  = string
   })
-
-  default = null
-}
-
-variable "public_ip_prefix" {
-  description = <<-HEREDOC
-  [virtual machine]
-    Optional reference to an EXISTING Public IP Prefix, for use by Public IPs created by this module.
-  HEREDOC
-
-  type = object({
-    name                = string
-    resource_group_name = string
-  })
-
-  default = null
-}
-
-variable "nat_gateway" {
-  description = <<-HEREDOC
-  [virtual machine]
-    Optional reference to an EXISTING NAT Gateway, for use by subnet created by this module.
-  HEREDOC
-
-  type = object({
-    name                = string
-    resource_group_name = string
-  })
-
-  default = null
 }
 
 variable "tags" {
@@ -99,53 +32,29 @@ variable "tags" {
 }
 
 ////////////////////////
-// Subnet
+// Storage Account
 ////////////////////////
 
-variable "subnet" {
-  description = <<-HEREDOC
-  [virtual machine]
-    Creates a NEW subnet for SQL resource(s). NSG can optionally be disabled.
-    The 'vnet_index', 'newbits' and 'netnum' defines a subnet prefix, using terraform the function 'cidrsubnet'.
-    
-    Examples, using the VNet ["192.168.168.0/24", "10.0.0.0/16"]
-      > [vnet_index = 0][newbits = 2][netnum = 0] : cidrsubnet("192.168.168.0/24", 2, 0) = "192.168.168.0/26"
-      > [vnet_index = 1][newbits = 8][netnum = 1] : cidrsubnet("10.0.0.0/24", 8, 1)      = "10.0.1.0/24"
-  HEREDOC
-
+variable "storage_account" {
   type = object({
-    name              = optional(string, "SqlVirtualMachineSubnet")
-    nsg_enabled       = optional(bool, true)
-    vnet_index        = optional(number, 0)
-    newbits           = optional(number, 2)
-    netnum            = optional(number, 0)
-    service_endpoints = optional(list(string))
+    name                = string
+    resource_group_name = string
   })
 
-  default = {}
+  default = null
 }
 
-variable "nsg_rules" {
-  description = <<-HEREDOC
-  [virtual machine]
-    User defined NSG rules to add to the subnet.
-    - 'Inbound' destination defaults to the application security group of the host server network interface, unless an address is provided.
-    - 'Outbound' source defaults to the application security group of the host server network interface, unless an address is provided.
-  HEREDOC
+////////////////////////
+// Key Vault
+////////////////////////
 
-  type = list(object({
-    name                       = string
-    priority                   = number
-    direction                  = optional(string, "Inbound")
-    access                     = optional(string, "Allow")
-    protocol                   = optional(string, "Tcp")
-    source_port_range          = optional(string)
-    source_address_prefix      = optional(string) // NOTE: Leave blank to target NIC Asg for Outbound traffic
-    destination_port_range     = optional(string)
-    destination_address_prefix = optional(string) // NOTE: Leave blank to target NIC Asg for Inbound traffic
-  }))
+variable "key_vault" {
+  type = object({
+    name                = string
+    resource_group_name = string
+  })
 
-  default = []
+  default = null
 }
 
 ////////////////////////
@@ -242,82 +151,6 @@ variable "vm_timezone" {
 
   type    = string
   default = "W. Europe Standard Time"
-}
-
-////////////////////////
-// Virtual Machine Extensions
-////////////////////////
-
-variable "vm_extension_bginfo" {
-  description = "az vm extension image list -o table --name BGInfo --publisher Microsoft.Compute --location <location>"
-
-  type = object({
-    enabled                    = optional(bool, true)
-    type_handler_version       = optional(string, "2.2")
-    auto_upgrade_minor_version = optional(bool, true)
-    automatic_upgrade_enabled  = optional(bool, false)
-  })
-
-  default = {}
-}
-
-variable "vm_extension_aad_login" {
-  description = <<-HEREDOC
-  NOTE:
-  This extension is not supposed to be working for Windows Server (only supported for windows 10/11 devices).
-  Seems to work if RG name is below 15 characters..
-  > az vm extension image list -o table --name AADLoginForWindows --publisher Microsoft.Azure.ActiveDirectory --location <location>
-  HEREDOC
-
-  type = object({
-    enabled                    = optional(bool, true)
-    type_handler_version       = optional(string, "2.0")
-    auto_upgrade_minor_version = optional(bool, true)
-    automatic_upgrade_enabled  = optional(bool, false)
-  })
-
-  default = {}
-}
-
-variable "vm_extension_compute_scripts" {
-  description = "az vm extension image list -o table --name CustomScriptExtension --publisher Microsoft.Compute --location <location>"
-
-  type = list(object({
-    type_handler_version        = optional(string, "1.10")
-    auto_upgrade_minor_version  = optional(bool, true)
-    automatic_upgrade_enabled   = optional(bool, false)
-    failure_suppression_enabled = optional(bool, false)
-
-    name    = string
-    command = string
-  }))
-
-  default = []
-
-  /*default = [{
-    name    = "AADJPrivate"
-    command = "powershell.exe -Command \"New-Item -Force -Path HKLM:\\SOFTWARE\\Microsoft\\RDInfraAgent\\AADJPrivate\"; shutdown -r -t 15; exit 0"
-  }]*/
-}
-
-variable "vm_extension_azure_scripts" {
-  description = "az vm extension image list -o table --name CustomScript --publisher Microsoft.Azure.Extensions --location <location>"
-
-  type = list(object({
-    type_handler_version        = optional(string, "2.1")
-    auto_upgrade_minor_version  = optional(bool, true)
-    automatic_upgrade_enabled   = optional(bool, false)
-    failure_suppression_enabled = optional(bool, false)
-
-    name                 = string
-    command              = string
-    storage_account_name = optional(string, "")
-    storage_account_key  = optional(string, "")
-    managed_identity     = optional(map(string), {})
-    file_uris            = optional(list(string), [])
-  }))
-
-  default = []
 }
 
 ////////////////////////
@@ -459,50 +292,76 @@ variable "sql_storage_configuration" {
 }
 
 ////////////////////////
-// Load Balancer
+// Virtual Machine Extensions
 ////////////////////////
 
-variable "private_link_enabled" {
-  type    = bool
-  default = false
+variable "vm_extension_bginfo" {
+  description = "az vm extension image list -o table --name BGInfo --publisher Microsoft.Compute --location <location>"
+
+  type = object({
+    enabled                    = optional(bool, true)
+    type_handler_version       = optional(string, "2.2")
+    auto_upgrade_minor_version = optional(bool, true)
+    automatic_upgrade_enabled  = optional(bool, false)
+  })
+
+  default = {}
 }
 
-variable "nat_rules" {
+variable "vm_extension_aad_login" {
+  description = <<-HEREDOC
+  NOTE:
+  This extension is not supposed to be working for Windows Server (only supported for windows 10/11 devices).
+  Seems to work if RG name is below 15 characters..
+  > az vm extension image list -o table --name AADLoginForWindows --publisher Microsoft.Azure.ActiveDirectory --location <location>
+  HEREDOC
+
+  type = object({
+    enabled                    = optional(bool, true)
+    type_handler_version       = optional(string, "2.0")
+    auto_upgrade_minor_version = optional(bool, true)
+    automatic_upgrade_enabled  = optional(bool, false)
+  })
+
+  default = {}
+}
+
+variable "vm_extension_compute_scripts" {
+  description = "az vm extension image list -o table --name CustomScriptExtension --publisher Microsoft.Compute --location <location>"
+
   type = list(object({
-    name          = string
-    frontend_port = number
-    backend_port  = number
-    protocol      = optional(string, "Tcp")
+    type_handler_version        = optional(string, "1.10")
+    auto_upgrade_minor_version  = optional(bool, true)
+    automatic_upgrade_enabled   = optional(bool, false)
+    failure_suppression_enabled = optional(bool, false)
+
+    name    = string
+    command = string
   }))
 
   default = []
+
+  /*default = [{
+    name    = "AADJPrivate"
+    command = "powershell.exe -Command \"New-Item -Force -Path HKLM:\\SOFTWARE\\Microsoft\\RDInfraAgent\\AADJPrivate\"; shutdown -r -t 15; exit 0"
+  }]*/
 }
 
-variable "nat_pool_rules" {
-  type = list(object({
-    name                = string
-    frontend_port_start = number
-    frontend_port_end   = number
-    backend_port        = number
-    protocol            = optional(string, "Tcp")
-  }))
+variable "vm_extension_azure_scripts" {
+  description = "az vm extension image list -o table --name CustomScript --publisher Microsoft.Azure.Extensions --location <location>"
 
-  default = []
-}
-
-variable "lb_rules" {
   type = list(object({
-    name                  = string
-    frontend_port         = number
-    backend_port          = number
-    protocol              = optional(string, "Tcp")
-    disable_outbound_snat = optional(bool, false)
-    probe_enabled         = optional(bool, false)
-    probe_protocol        = optional(string, "Tcp")
-    probe_port            = optional(number)
-    interval_in_seconds   = optional(number, 60)
-    number_of_probes      = optional(number, 2)
-    probe_threshold       = optional(number, 1)
+    type_handler_version        = optional(string, "2.1")
+    auto_upgrade_minor_version  = optional(bool, true)
+    automatic_upgrade_enabled   = optional(bool, false)
+    failure_suppression_enabled = optional(bool, false)
+
+    name                 = string
+    command              = string
+    storage_account_name = optional(string, "")
+    storage_account_key  = optional(string, "")
+    managed_identity     = optional(map(string), {})
+    file_uris            = optional(list(string), [])
   }))
 
   default = []

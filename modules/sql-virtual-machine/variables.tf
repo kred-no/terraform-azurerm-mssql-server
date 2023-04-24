@@ -2,19 +2,12 @@
 // External
 ////////////////////////
 
+variable "tags" {}
 variable "resource_group" {}
 variable "virtual_network" {}
-variable "nat_gateway" {}
-variable "tags" {}
+variable "subnet" {}
 variable "key_vault" {}
 variable "storage_account" {}
-
-////////////////////////
-// Network
-////////////////////////
-
-variable "subnet" {}
-variable "nsg_rules" {}
 
 ////////////////////////
 // Virtual Machine
