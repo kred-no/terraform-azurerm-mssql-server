@@ -25,7 +25,7 @@ locals {
   vm_priority        = "Spot"
   vm_eviction_policy = "Delete"
   vm_max_bid_price   = "-1"
-  
+
   vm_source_image = {
     offer     = "sql2022-ws2022"
     publisher = "MicrosoftSQLServer"
@@ -184,7 +184,7 @@ resource "azurerm_network_security_group" "MAIN" {
   count = local.flag.lb_enabled ? 1 : 0
 
   name = join("-", [azurerm_subnet.MAIN.name, "nsg"])
-  
+
   location            = azurerm_virtual_network.MAIN.location
   resource_group_name = azurerm_virtual_network.MAIN.resource_group_name
 }
@@ -237,9 +237,9 @@ resource "azurerm_network_security_rule" "MAIN" {
 resource "azurerm_public_ip" "MAIN" {
   count = local.flag.lb_enabled ? 1 : 0
 
-  name                = join("-", [module.SQL_SERVER.virtual_machine.name, "pip"])
-  sku                 = "Standard"
-  allocation_method   = "Static"
+  name              = join("-", [module.SQL_SERVER.virtual_machine.name, "pip"])
+  sku               = "Standard"
+  allocation_method = "Static"
   #domain_name_label   = var.domain_name_label
 
   resource_group_name = azurerm_resource_group.MAIN.name
@@ -252,7 +252,7 @@ resource "azurerm_public_ip" "MAIN" {
 
 resource "azurerm_lb" "MAIN" {
   count = local.flag.lb_enabled ? 1 : 0
-  
+
   name = join("-", [module.SQL_SERVER.virtual_machine.name, "lb"])
   sku  = "Standard"
 

@@ -9,11 +9,11 @@ output "mssql_server" {
 }
 
 output "application_security_group" {
-  sensitive = true
+  sensitive = false
   value     = azurerm_application_security_group.MAIN
 }
 
 output "network_interface" {
-  sensitive = true
+  sensitive = false
   value     = azurerm_network_interface.MAIN
 }
